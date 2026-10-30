@@ -47,8 +47,8 @@ public sealed class StationLibrary : IAsyncDisposable
         _journal = journal; _dataRoot = dataRoot; _stations = stations.ToHashSet(StringComparer.Ordinal);
         var kinds = contentKinds is null ? new Dictionary<string, ContentKind>(StringComparer.Ordinal)
             : contentKinds.ToDictionary(x=>x.Key,x=>x.Value,StringComparer.Ordinal);
-        if(kinds.Any(x=>!_stations.Contains(x.Key)||x.Value is not (ContentKind.Music or ContentKind.Jingle or ContentKind.Sweeper)))
-            throw new ArgumentException("Library roles must name configured music, jingle or sweeper inventories.");
+        if(kinds.Any(x=>!_stations.Contains(x.Key)||x.Value is not (ContentKind.Music or ContentKind.Jingle or ContentKind.Sweeper or ContentKind.Program)))
+            throw new ArgumentException("Library roles must name configured music, program, jingle or sweeper inventories.");
         _contentKinds = kinds;
         _audioProbe = probe is null ? new LibraryAudioProbe(ffmpeg) : null;
         _probe = probe ?? _audioProbe!.VerifyAsync;
@@ -82,7 +82,9 @@ public sealed class StationLibrary : IAsyncDisposable
     public QueuedSourceResolution ResolveQueuedSource(string station, StationQueueEntry entry)
     {
         if (entry.StationId != station || entry.Source is not { } source) return new(null,QueuedSourceState.Unlinked);
-        if (!_playback.TryGetValue(station,out var set) || set.RootRevision==0 || set.Identities is not { } identities)
+        var inventory=StationProgrammes.ResolveQueueInventory(station,source);
+        if(inventory is null)return new(null,QueuedSourceState.Unlinked);
+        if (!_playback.TryGetValue(inventory,out var set) || set.RootRevision==0 || set.Identities is not { } identities)
             return new(null,QueuedSourceState.Waiting);
         if (set.RootRevision!=source.Revision || source.SourceStamp is not { } stamp) return new(null,QueuedSourceState.Changed);
         var separator = stamp.IndexOf(':');
@@ -171,7 +173,7 @@ public sealed class StationLibrary : IAsyncDisposable
                 throw new IOException("The source changed. Wait for Library to validate it before cueing.");
             var frames=checked((long)Math.Round(asset.Seconds*48000));
             if(request.StartSample>=frames)throw new ArgumentException("Choose a cue position before the end of this item.");
-            return new(new(asset.Id,path,asset.Artist,asset.Title,DurationSeconds:asset.Seconds,Loudness:asset.Loudness),frames,guard);
+            return new(new(asset.Id,path,asset.Artist,asset.Title,_contentKinds.GetValueOrDefault(request.StationId,ContentKind.Music),DurationSeconds:asset.Seconds,Loudness:asset.Loudness),frames,guard);
         }
         catch{guard.Dispose();throw;}
     }

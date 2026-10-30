@@ -4,6 +4,7 @@ public static class RecoveryCompatibility
 {
     public const string HeldRotationFeature = "held-rotation-v1";
     public const string StationQueueFeature = "station-queue-v1";
+    public const string ProgrammeLibraryFeature = "programme-library-v1";
     public static bool SupportsHeldRotation(IReadOnlyCollection<string>? features)
         => features?.Contains(HeldRotationFeature, StringComparer.Ordinal) == true;
 

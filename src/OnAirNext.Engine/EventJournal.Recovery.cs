@@ -29,6 +29,16 @@ public sealed partial class EventJournal
 
     public async Task RequireRecoveryReaderAsync(IReadOnlyCollection<string>? features)
     {
+        if(features?.Contains(RecoveryCompatibility.ProgrammeLibraryFeature,StringComparer.Ordinal)!=true&&
+            await TransactionAsync((c,t)=>
+            {
+                if(!HasUnfinishedStationQueue(c,t))return false;
+                using var rows=LibraryCommand(c,t,"SELECT library_reference FROM station_queue WHERE state IN ('Pending','Playing') AND library_reference IS NOT NULL");
+                using var reader=rows.ExecuteReader();
+                while(reader.Read())if(JsonSerializer.Deserialize<QueueLibraryReference>(reader.GetString(0))?.InventoryId is not null)return true;
+                return false;
+            }))
+            throw new InvalidOperationException("This journal has unfinished recorded programs. Use a compatible program-library console; the service was not changed.");
         if (features?.Contains(RecoveryCompatibility.StationQueueFeature, StringComparer.Ordinal) != true &&
             await TransactionAsync((c,t) => HasUnfinishedStationQueue(c,t)))
             throw new InvalidOperationException("This journal has unfinished station queues. Use a compatible console before application maintenance; the service was not changed.");

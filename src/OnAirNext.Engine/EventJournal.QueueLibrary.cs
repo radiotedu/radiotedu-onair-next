@@ -9,7 +9,8 @@ public sealed partial class EventJournal
     {
         ArgumentNullException.ThrowIfNull(source);
         if (source.Revision < 1 || source.ExpectedVersion < 0 || string.IsNullOrWhiteSpace(source.AssetId) ||
-            source.AssetId.Length > 128 || string.IsNullOrWhiteSpace(source.SourceStamp) || source.SourceStamp.Length > 100)
+            source.AssetId.Length > 128 || string.IsNullOrWhiteSpace(source.SourceStamp) || source.SourceStamp.Length > 100 ||
+            source.InventoryId is not null&&(source.InventoryId.Length>80||string.IsNullOrWhiteSpace(source.InventoryId)))
             throw new ArgumentException("Choose a validated item from the current library.");
         return JsonSerializer.Serialize(new { source, expectedRevision });
     }
@@ -42,19 +43,22 @@ public sealed partial class EventJournal
             if (!AdmitControl(c,t,station,"station-queue-library",payload,id)) return ReadQueue(c,t,station);
             var queue = ReadQueue(c,t,station); RequireQueueRevision(queue,expectedRevision);
             if (queue.Entries.Count >= MaximumQueuedItems) throw new InvalidOperationException("This channel's queue is full.");
+            var inventory=StationProgrammes.ResolveQueueInventory(station,source)
+                ??throw new ArgumentException("Choose music or a program from this channel's library.");
+            RequireLibraryInventory(c,t,inventory);
             requireSourceGuard(); // A file handle was admitted outside this writer lane; no disk access here.
-            var root = ReadLibraryRoot(c,t,station) ?? throw new InvalidOperationException("Choose a live folder in Library.");
+            var root = ReadLibraryRoot(c,t,inventory) ?? throw new InvalidOperationException("Choose a live folder in Library.");
             if (root.Revision != source.Revision) throw new InvalidOperationException("The live folder changed. Refresh Library.");
             LibraryAsset? asset;
             using (var read = LibraryCommand(c,t,AssetSelect+AssetJoin+
                 " WHERE a.station_id=$station AND a.revision=$revision AND a.id=$id",
-                ("$station",station),("$revision",source.Revision),("$id",source.AssetId)))
+                ("$station",inventory),("$revision",source.Revision),("$id",source.AssetId)))
             using (var reader = read.ExecuteReader()) asset = reader.Read() ? ReadAsset(reader) : null;
             if (asset is not { State: "Ready" } || asset.EditVersion != source.ExpectedVersion ||
                 asset.SourceStamp != source.SourceStamp || !double.IsFinite(asset.Seconds) || asset.Seconds <= 0)
                 throw new InvalidOperationException("The item changed or is unavailable. Refresh Library before queueing.");
             var item = new MediaItem(asset.Id,Path.Combine(root.Path,asset.RelativePath),asset.Artist,asset.Title,
-                DurationSeconds:asset.Seconds,Loudness:asset.Loudness);
+                source.InventoryId is null?ContentKind.Music:ContentKind.Program,DurationSeconds:asset.Seconds,Loudness:asset.Loudness);
             using var position = LibraryCommand(c,t,"SELECT COALESCE(MAX(position),0) FROM station_queue WHERE station_id=$station",("$station",station));
             var next = checked(Convert.ToInt64(position.ExecuteScalar(),CultureInfo.InvariantCulture)+1);
             using var insert = LibraryCommand(c,t,

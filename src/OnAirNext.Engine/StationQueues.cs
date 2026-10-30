@@ -84,6 +84,7 @@ public sealed class StationQueues : IDisposable
     private readonly EventJournal _journal;
     private readonly StationLibrary _library;
     private readonly Dictionary<string, Reservations> _stations;
+    private readonly Dictionary<string,string> _programmeOwners;
     private bool _disposed;
     public event Action<string,bool>? Changed;
 
@@ -91,6 +92,8 @@ public sealed class StationQueues : IDisposable
     {
         _journal=journal; _library=library;
         _stations=stations.ToDictionary(id=>id,_=>new Reservations(),StringComparer.Ordinal);
+        _programmeOwners=StationProgrammes.InventoryKinds(_stations.Keys).Keys.ToDictionary(key=>key,
+            key=>_stations.Keys.Single(station=>StationProgrammes.InventoryKey(station)==key),StringComparer.Ordinal);
         _journal.QueueChanged+=OnQueueChanged; _library.Changed+=OnLibraryChanged;
     }
     public async Task InitializeAsync()
@@ -105,7 +108,7 @@ public sealed class StationQueues : IDisposable
         if (!_disposed && _stations.ContainsKey(station))
             Changed?.Invoke(station,_journal.PublishedQueue(station)?.Entries.Any(e=>_library.ResolveQueuedItem(station,e) is not null)==true);
     }
-    private void OnLibraryChanged(string station, bool _) => OnQueueChanged(station);
+    private void OnLibraryChanged(string station, bool _) => OnQueueChanged(_programmeOwners.GetValueOrDefault(station,station));
 
     public async Task<StationQueueView> SnapshotAsync(string station)
     {
@@ -132,11 +135,13 @@ public sealed class StationQueues : IDisposable
     public async Task EnqueueAsync(string station, QueueLibraryReference source, long revision, string commandId)
     {
         Get(station);
+        var inventory=StationProgrammes.ResolveQueueInventory(station,source)
+            ??throw new ArgumentException("Choose music or a program from this channel's library.");
         async Task Replay() => _ = await _journal.EnqueueLibraryItemAsync(station,source,revision,commandId,
             ()=>throw new InvalidOperationException("A fresh library selection is required."));
         if (await _journal.HasLibraryQueueReceiptAsync(station,source,revision,commandId)) { await Replay(); return; }
         PrivateCueSource guard;
-        try { guard=_library.OpenPrivateCue(new(commandId,station,source.Revision,source.AssetId,source.ExpectedVersion,source.SourceStamp)); }
+        try { guard=_library.OpenPrivateCue(new(commandId,inventory,source.Revision,source.AssetId,source.ExpectedVersion,source.SourceStamp)); }
         catch (Exception error) when (error is IOException or InvalidOperationException or UnauthorizedAccessException)
         {
             if (await _journal.HasLibraryQueueReceiptAsync(station,source,revision,commandId)) { await Replay(); return; }

@@ -51,8 +51,11 @@ internal static class EngineHost
         if (serviceMode) WindowsServiceDiagnostics.Stage("library and coordinator construction");
         var brandingStations=config.Stations.Where(x=>x.Repeat).Select(x=>x.Id).ToArray();
         var brandingKinds=StationBranding.InventoryKinds(brandingStations);
-        var libraryInventories=brandingStations.Concat(brandingKinds.Keys).ToArray();
-        await using var library = new StationLibrary(journal, config.Ffmpeg, config.DataRoot, libraryInventories,contentKinds:brandingKinds);
+        var inventoryKinds=brandingKinds.Concat(StationProgrammes.InventoryKinds(brandingStations)).ToDictionary(x=>x.Key,x=>x.Value,StringComparer.Ordinal);
+        if(config.Stations.Any(station=>inventoryKinds.ContainsKey(station.Id)||station.Id.StartsWith("programmes-",StringComparison.Ordinal)))
+            throw new ArgumentException("Library inventory IDs are reserved and cannot be broadcast channels.");
+        var libraryInventories=brandingStations.Concat(inventoryKinds.Keys).ToArray();
+        await using var library = new StationLibrary(journal, config.Ffmpeg, config.DataRoot, libraryInventories,contentKinds:inventoryKinds);
         using var branding = new StationBranding(journal,library,brandingStations);
         using var queues = new StationQueues(journal,library,brandingStations);
         await using var coordinator = new StationCoordinator(config.Ffmpeg, config.Stations, journal,
@@ -78,6 +81,7 @@ internal static class EngineHost
         {
             if (serviceMode) WindowsServiceDiagnostics.Stage("library initialization");
             await branding.InitializeAsync();
+            await StationProgrammes.InitializeAsync(journal,brandingStations);
             await library.InitializeAsync();
             if (serviceMode) WindowsServiceDiagnostics.Stage("coordinator initialization");
             await coordinator.InitializeAsync(queues.InitializeAsync);
@@ -124,7 +128,7 @@ internal static class EngineHost
                                 await journal.RequireRecoveryReaderAsync(request.JournalFeatures);
                                 result = JsonSerializer.Serialize(new { stations = coordinator.Snapshot(),
                                     audit = new { journal.PendingEvents, journal.RejectedEvents, journal.Error },
-                                    children = ChildProcess.ActiveProcesses, privateCue=privateCue.Snapshot(), controller = new { mode = serviceMode ? "windows-service" : "developer", service = serviceMode ? ServiceEndpoint.Name : null, capabilities = new[] { "legacy-music-assignment-v1", RecoveryCompatibility.HeldRotationFeature, "branding-library-v1","private-cue-v1",RecoveryCompatibility.StationQueueFeature } } });
+                                    children = ChildProcess.ActiveProcesses, privateCue=privateCue.Snapshot(), controller = new { mode = serviceMode ? "windows-service" : "developer", service = serviceMode ? ServiceEndpoint.Name : null, capabilities = new[] { "legacy-music-assignment-v1", RecoveryCompatibility.HeldRotationFeature, "branding-library-v1","private-cue-v1",RecoveryCompatibility.StationQueueFeature,RecoveryCompatibility.ProgrammeLibraryFeature } } });
                                 break;
                             case "queue-status" when request.StationId is { } queueStation:
                                 result=JsonSerializer.Serialize(new{queue=await queues.SnapshotAsync(queueStation)});break;

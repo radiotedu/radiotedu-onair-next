@@ -1,11 +1,13 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Data.Sqlite;
 
 namespace OnAirNext.Engine;
 
-public sealed record QueueLibraryReference(long Revision, string AssetId, long ExpectedVersion, string SourceStamp);
+public sealed record QueueLibraryReference(long Revision, string AssetId, long ExpectedVersion, string SourceStamp,
+    [property: JsonIgnore(Condition=JsonIgnoreCondition.WhenWritingNull)] string? InventoryId=null);
 public sealed record StationQueueEntry(string Id, string StationId, long Position, MediaItem Item, string State,
     QueueLibraryReference? Source = null, string? PreviousOccurrenceId = null);
 public sealed record StationQueueSnapshot(string StationId, long Revision, IReadOnlyList<StationQueueEntry> Entries);
