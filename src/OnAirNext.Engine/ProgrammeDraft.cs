@@ -7,15 +7,17 @@ public enum ProgrammeOrder { Shuffle, FolderOrder }
 
 public sealed record ProgrammeDraft(ProgrammeCalendarRule Rule, string SourceFolder,
     string? SourceFile = null, string? DisplayText = null, ProgrammeOrder Order = ProgrammeOrder.Shuffle,
-    double TransitionSeconds = 3)
+    double TransitionSeconds = 3, bool SuppressStationBranding = false)
 {
-    public bool PreservesStationBranding => true;
+    public bool PreservesStationBranding => !SuppressStationBranding;
 
     public ProgrammeDraft Normalize(IReadOnlySet<string> stations)
     {
         ArgumentNullException.ThrowIfNull(Rule);
         Rule.Validate(stations);
         if (Rule.Enabled) throw new ArgumentException("Save this programme as a draft. Publishing requires the qualified playback workflow.");
+        if (SuppressStationBranding && Rule.Kind != CalendarRuleKind.SpecialDay)
+            throw new ArgumentException("Only a special-day music window can suppress its station branding.");
         if (!Enum.IsDefined(Order) || !double.IsFinite(TransitionSeconds) || TransitionSeconds is < 0.1 or > 15)
             throw new ArgumentException("Choose a supported order and a smooth transition between 0.1 and 15 seconds.");
         if (DisplayText is not null && (string.IsNullOrWhiteSpace(DisplayText) || DisplayText.Length > 512 || DisplayText.Any(char.IsControl)))

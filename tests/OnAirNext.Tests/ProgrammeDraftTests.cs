@@ -36,6 +36,24 @@ public sealed class ProgrammeDraftTests
     }
 
     [Fact]
+    public async Task SuppressedBrandingSurvivesDraftReopenWithoutChangingOtherStations()
+    {
+        var database = Database(); var draft = Draft() with { SuppressStationBranding = true };
+        await using (var journal = new EventJournal(database))
+        {
+            await journal.InitializeProgrammeDraftsAsync();
+            var saved = await journal.SaveProgrammeDraftAsync(draft, 0, Command(), "operator-a", Stations);
+            Assert.False(saved.Draft.PreservesStationBranding); Assert.False(saved.Draft.Rule.Enabled);
+        }
+        await using var reopened = new EventJournal(database); await reopened.InitializeProgrammeDraftsAsync();
+        var item = Assert.Single((await reopened.ProgrammeDraftsAsync(Stations, "pop")).Items);
+        Assert.True(item.Draft.SuppressStationBranding);
+        Assert.Empty((await reopened.ProgrammeDraftsAsync(Stations, "energize")).Items);
+        Assert.Empty(EventJournal.ReadEvents(database));
+        Assert.Throws<ArgumentException>(() => (draft with { Rule = draft.Rule with { Kind = CalendarRuleKind.TimedSweeper } }).Normalize(Stations));
+    }
+
+    [Fact]
     public async Task RetryReturnsOriginalReceiptAfterLaterEditsAndRejectsReusedCommand()
     {
         await using var journal = new EventJournal(Database()); await journal.InitializeProgrammeDraftsAsync();

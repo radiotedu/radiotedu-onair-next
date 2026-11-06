@@ -31,6 +31,7 @@
       $('pending').hidden=!wait;$('pending-text').textContent=wait?'A '+wait.action+' request has no confirmed result. Retry its original ID before another change.':'';$('retry').disabled=!usable()||writing;
       const sweeper=$('kind').value==='TimedSweeper';for(const id of ['file-label','repeat-label','late-label'])$(id).hidden=!sweeper;
       $('file').disabled=!sweeper;$('repeat').disabled=!sweeper;$('late').disabled=!sweeper;
+      $('suppress-branding-label').hidden=sweeper;$('suppress-branding').disabled=sweeper;
       $('display-label').hidden=!$('override').checked;$('display').required=$('override').checked;
       $('start').disabled=$('all-day').checked;$('end').disabled=$('all-day').checked;
       $('return-help').textContent=sweeper?'Additional insertion, not a replacement music window. Expired insertions do not accumulate after an outage.':'Normal rotation resumes after the window. Finishing an item may extend beyond the scheduled end; choose a fade at the scheduled end for a strict boundary.';
@@ -45,7 +46,7 @@
       const now=date.format(new Date()),r=draft?.Rule;state.editorEngine=context().engine;state.id=r?.Id??uuid();state.version=r?.Version??0;
       const values={name:r?.Name??'',kind:r?.Kind??'SpecialDay',priority:r?.Priority??0,first:r?.FirstDate??now,last:r?.LastDate??now,start:(r?.StartsAt??'08:00').slice(0,5),end:(r?.EndsAt??'14:00').slice(0,5),entry:r?.StartPolicy??'FinishCurrentSong',return:r?.ReturnPolicy??'FinishCurrentItem',folder:draft?.SourceFolder??'',file:draft?.SourceFile??'',repeat:r?.EveryMinutes??'',late:r?.LateToleranceSeconds??120,order:draft?.Order??'Shuffle',fade:draft?.TransitionSeconds??3,display:draft?.DisplayText??''};
       for(const [id,value]of Object.entries(values))$(id).value=String(value);
-      $('annual').checked=r?.Annual??false;$('all-day').checked=r?.AllDay??false;$('override').checked=draft?.DisplayText!=null;
+      $('annual').checked=r?.Annual??false;$('all-day').checked=r?.AllDay??false;$('override').checked=draft?.DisplayText!=null;$('suppress-branding').checked=draft?.SuppressStationBranding??false;
       channels(r?.Stations??[context().station]);state.dirty=false;state.localError=false;invalidatePreview();
       if(clearLocal&&context().engine)try{recovery.forget(localStorage,context().engine);}catch(error){feedback('The previous local recovery copy could not be cleared: '+error.message);}
       $('editor-title').textContent=r?'EDIT DRAFT':'NEW EVENT';$('version').textContent=r?'Version '+r.Version:'Unsaved';controls();
@@ -58,7 +59,7 @@
       if(!ownEditor())throw new Error('Load a draft from the selected engine.');if(!$('form').reportValidity())throw new Error('Complete the highlighted settings.');
       const stations=Array.from($('channels').querySelectorAll('input:checked'),x=>x.value);if(!stations.length)throw new Error('Choose at least one channel.');
       const sweeper=$('kind').value==='TimedSweeper',allDay=$('all-day').checked;
-      return {Rule:{Id:state.id,Version:state.version+1,Name:$('name').value,Stations:stations,Kind:$('kind').value,FirstDate:$('first').value,LastDate:$('last').value,StartsAt:(allDay?'00:00':$('start').value)+':00',EndsAt:(allDay?'00:00':$('end').value)+':00',AllDay:allDay,Annual:$('annual').checked,Enabled:false,Priority:Number($('priority').value),StartPolicy:$('entry').value,ReturnPolicy:$('return').value,EveryMinutes:sweeper&&$('repeat').value!==''?Number($('repeat').value):null,LateToleranceSeconds:Number($('late').value)},SourceFolder:$('folder').value,SourceFile:sweeper&&$('file').value?$('file').value:null,DisplayText:$('override').checked?$('display').value:null,Order:$('order').value,TransitionSeconds:Number($('fade').value)};
+      return {Rule:{Id:state.id,Version:state.version+1,Name:$('name').value,Stations:stations,Kind:$('kind').value,FirstDate:$('first').value,LastDate:$('last').value,StartsAt:(allDay?'00:00':$('start').value)+':00',EndsAt:(allDay?'00:00':$('end').value)+':00',AllDay:allDay,Annual:$('annual').checked,Enabled:false,Priority:Number($('priority').value),StartPolicy:$('entry').value,ReturnPolicy:$('return').value,EveryMinutes:sweeper&&$('repeat').value!==''?Number($('repeat').value):null,LateToleranceSeconds:Number($('late').value)},SourceFolder:$('folder').value,SourceFile:sweeper&&$('file').value?$('file').value:null,DisplayText:$('override').checked?$('display').value:null,Order:$('order').value,TransitionSeconds:Number($('fade').value),SuppressStationBranding:!sweeper&&$('suppress-branding').checked};
     }
     const button=(text,fn)=>{const b=node('button',text,'button');b.type='button';b.addEventListener('click',fn);return b;};
     function card(revision){

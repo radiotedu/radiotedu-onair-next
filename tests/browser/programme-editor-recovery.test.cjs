@@ -18,3 +18,9 @@ test('unavailable storage is reported and unsupported fields are not persisted',
   assert.throws(()=>editor.save({setItem(){throw new Error('Quota exceeded');}},engine,value),/Quota exceeded/);
   assert.throws(()=>editor.save(store,engine,{...value,version:Number.MAX_SAFE_INTEGER+1}));assert.throws(()=>editor.load(store,'untrusted-remote'));
 });
+test('branding suppression survives recovery and older editor snapshots remain readable',()=>{
+  const store=storage(),value=snapshot();value.flags['suppress-branding']=true;editor.save(store,engine,value);
+  assert.equal(editor.load(store,engine).flags['suppress-branding'],true);
+  const key=[...store.values.keys()][0],old=JSON.parse(store.values.get(key));delete old.flags['suppress-branding'];store.values.set(key,JSON.stringify(old));
+  assert.equal(editor.load(store,engine).flags['suppress-branding'],false);
+});
