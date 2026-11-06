@@ -51,7 +51,8 @@ public sealed partial class StationEngine
     private void PrepareBoundaryFor(string type,long position,string detail,Cursor cursor,PlayoutCheckpoint checkpoint)
     {
         if(_boundaries.Count>=MaximumPreparedEntries)throw new InvalidOperationException("Prepared event ownership exceeded its bounded window.");
-        _preparedBranding=_preparedBranding.Project(cursor.Selection.Item.Kind,type);
+        if(cursor.Selection.ProgrammeMusicKey is null)
+            _preparedBranding=_preparedBranding.Project(cursor.Selection.Item.Kind,type);
         _boundaries.Enqueue(new(type,position,detail,cursor,checkpoint));
     }
     // Start at the end of the published span is still unheard. Terminal at that end belongs to the published span.
@@ -73,7 +74,7 @@ public sealed partial class StationEngine
             if(boundary.Type=="started")
             {
                 Volatile.Write(ref _audible,cursor);
-                foreach(var output in _outputs)output.SetNowPlaying(item.Artist,item.Title);
+                PublishProgrammeMetadata(item,boundary.Position);
             }
             else if(terminal)
             {

@@ -10,6 +10,7 @@ public sealed partial class StationEngine : IStationSession
     private readonly EventJournal _journal;
     private readonly IPlayoutPlanner? _planner;
     private readonly IBrandingSource? _branding;
+    private readonly ProgrammeRuntimeCoordinator? _programmes;
     private readonly DecoderPreparation _decoders;
     private readonly Func<Task> _validateEncoders;
     private BrandingProgress _preparedBranding = null!;
@@ -47,10 +48,10 @@ public sealed partial class StationEngine : IStationSession
     public Task Completion=>_run??Task.CompletedTask;
 
     public StationEngine(string ffmpeg,StationSettings settings,EventJournal journal,IReadOnlyList<IProgramOutput>? outputs=null,IPlayoutPlanner? planner=null,
-        IBrandingSource? branding=null)
-        : this(ffmpeg,settings,journal,outputs,planner,branding,null) { }
+        IBrandingSource? branding=null,ProgrammeRuntimeCoordinator? programmes=null)
+        : this(ffmpeg,settings,journal,outputs,planner,branding,null,null,programmes) { }
     internal StationEngine(string ffmpeg,StationSettings settings,EventJournal journal,IReadOnlyList<IProgramOutput>? outputs,IPlayoutPlanner? planner,
-        IBrandingSource? branding,Func<MediaItem,IFrameDecoder>? decoderFactory,Func<Task>? validateEncoders=null)
+        IBrandingSource? branding,Func<MediaItem,IFrameDecoder>? decoderFactory,Func<Task>? validateEncoders=null,ProgrammeRuntimeCoordinator? programmes=null)
     {
         if(string.IsNullOrWhiteSpace(settings.Id))throw new ArgumentException("Station ID is required.");
         if(settings.Playlist.Count==0&&planner is null)throw new ArgumentException("An approved nonempty playlist is required.");
@@ -58,7 +59,7 @@ public sealed partial class StationEngine : IStationSession
         if(settings.Outputs.Select(x=>(x.Host,x.Port,x.Mount)).Distinct().Count()!=settings.Outputs.Count)throw new ArgumentException("Duplicate source ownership is prohibited.");
         if(!double.IsFinite(settings.CrossfadeSeconds)||settings.CrossfadeSeconds<0||settings.CrossfadeSeconds>15||
             settings.CrossfadeSeconds>0&&settings.CrossfadeSeconds<.5)throw new ArgumentException("Crossfade must be disabled or between 0.5 and 15 seconds.");
-        _settings=settings;_journal=journal;_planner=planner;_branding=branding;
+        _settings=settings;_journal=journal;_planner=planner;_branding=branding;_programmes=programmes;
         _decoders=new(decoderFactory??(item=>new MediaDecoder(ffmpeg,item)));
         _validateEncoders=validateEncoders??(()=>EncoderCapabilities.ValidateAsync(ffmpeg,settings.Outputs));
         _outputs=outputs??settings.Outputs.Select(x=>(IProgramOutput)new IcecastOutput(ffmpeg,x)).ToArray();
@@ -157,6 +158,7 @@ public sealed partial class StationEngine : IStationSession
                 _loudness.Publish(frame);foreach(var output in _outputs)output.Publish(frame);
                 Interlocked.Add(ref _samples,frame.Length/AudioFormat.BytesPerSampleFrame);
                 CommitBoundaries(_samples,false);AdvanceAudibleProjection(_samples);
+                RefreshProgrammeMetadata();
                 Volatile.Write(ref _publishedLimiter,_limiter.Snapshot());
                 frame.Dispose();frame=null;
                 if(checkpointClock.ElapsedMilliseconds>=250){QueueAudit(()=>_journal.SaveCheckpointAsync(AudibleCheckpoint("Playing")));checkpointClock.Restart();}

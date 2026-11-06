@@ -76,10 +76,11 @@ internal static class EngineHost
         await using var library = new StationLibrary(journal, config.Ffmpeg, config.DataRoot, libraryInventories,contentKinds:brandingKinds);
         using var branding = new StationBranding(journal,library,brandingStations);
         using var queues = new StationQueues(journal,library,brandingStations);
+        await using var programmes = new ProgrammeRuntimeCoordinator(journal,config.Stations.Select(station=>station.Id));
         await using var coordinator = new StationCoordinator(config.Ffmpeg, config.Stations, journal,
             settings => new StationEngine(config.Ffmpeg, settings, journal,
                 outputs: config.Commissioning ? settings.Outputs.Select(output => (IProgramOutput)new IcecastOutput(config.Ffmpeg, output, LegacyServiceFence.ForOutput(output))).ToArray() : null,
-                planner: queues.Planner(settings), branding:settings.Repeat?branding.Source(settings.Id):null),
+                planner: queues.Planner(settings), branding:settings.Repeat?branding.Source(settings.Id):null,programmes:programmes),
             commissionedService: config.Commissioning);
         await using var sourceChecks = new SourceAccessChecks(async path =>
         {
@@ -105,6 +106,8 @@ internal static class EngineHost
             await journal.InitializeProgrammePlaybackAsync();
             await journal.InitializeProgrammeDraftsAsync();
             await journal.InitializeProgrammePublicationsAsync();
+            await programmes.RefreshAsync();
+            programmes.Start();
             if (serviceMode) WindowsServiceDiagnostics.Stage("coordinator initialization");
             await coordinator.InitializeAsync(queues.InitializeAsync);
             var programmeStations = config.Stations.Select(station => station.Id).ToHashSet(StringComparer.Ordinal);

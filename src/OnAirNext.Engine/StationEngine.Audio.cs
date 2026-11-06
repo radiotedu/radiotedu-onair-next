@@ -153,7 +153,7 @@ public sealed partial class StationEngine
     private ValueTask PrepareNextAsync(bool assumeCurrentCompleted=true,bool retryFault=false)
     {
         var ordinary=TrySelectOrdinary(NextRotationIndex);
-        var projected=assumeCurrentCompleted&&_selection is not null
+        var projected=assumeCurrentCompleted&&_selection is not null&&_selection.ProgrammeMusicKey is null
             ?_preparedBranding.Project(_selection.Item.Kind,"ended"):_preparedBranding;
         var desired=ChooseBranding(ordinary,projected);
         var second=IsBranding(desired)?ChooseBranding(ordinary,projected.Project(desired!.Item.Kind,"ended")):null;
