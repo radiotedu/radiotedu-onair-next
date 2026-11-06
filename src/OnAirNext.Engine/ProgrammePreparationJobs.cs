@@ -14,7 +14,7 @@ public sealed record ProgrammePreparationJob(string Id, string ProgrammeId, stri
 // scheduler is integrated and qualified.
 public sealed class ProgrammePreparationJobs : IAsyncDisposable
 {
-    private sealed record Entry(string Fingerprint, ProgrammePreparationJob Snapshot);
+    private sealed record Entry(string Fingerprint, ProgrammePreparationJob Snapshot, PreparedProgramme? RetryPrepared = null);
     private readonly object _gate = new();
     private readonly Dictionary<string, Entry> _jobs = new(StringComparer.Ordinal);
     private readonly Func<ProgrammeDraft, CancellationToken, Task<PreparedProgramme>> _prepare;
@@ -46,10 +46,16 @@ public sealed class ProgrammePreparationJobs : IAsyncDisposable
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            PreparedProgramme? retryPrepared = null;
             if (_jobs.TryGetValue(id, out var previous))
             {
                 if (previous.Fingerprint != fingerprint) throw new ArgumentException("This request ID belongs to a different preparation.");
-                return previous.Snapshot;
+                if (previous.Snapshot.State != "CommitUnknown" || _busy) return previous.Snapshot;
+                // The journal's command receipt makes a same-ID retry safe even
+                // when the original acknowledgement was lost after commit. The
+                // exact prepared payload must also be retained for that receipt.
+                retryPrepared = previous.RetryPrepared ?? throw new InvalidOperationException("The uncertain publication payload is unavailable. Reload its durable state.");
+                _jobs.Remove(id);
             }
             if (_busy) throw new InvalidOperationException("Another programme is being prepared. Wait for it to finish.");
             if (_jobs.Count >= 64)
@@ -66,9 +72,10 @@ public sealed class ProgrammePreparationJobs : IAsyncDisposable
             _running = Task.Run(async () =>
             {
                 var committing = false;
+                PreparedProgramme? prepared = null;
                 try
                 {
-                    var prepared = await _prepare(draft, cancel.Token);
+                    prepared = retryPrepared ?? await _prepare(draft, cancel.Token);
                     lock (_gate)
                     {
                         cancel.Token.ThrowIfCancellationRequested();
@@ -81,9 +88,27 @@ public sealed class ProgrammePreparationJobs : IAsyncDisposable
                     lock (_gate) Set(id, _jobs[id].Snapshot with { State = "Published", FinishedAt = _clock.GetUtcNow(), Publication = publication });
                 }
                 catch (OperationCanceledException) when (!committing && cancel.IsCancellationRequested)
-                { lock (_gate) Set(id, _jobs[id].Snapshot with { State = "Cancelled", FinishedAt = _clock.GetUtcNow() }); }
+                {
+                    lock (_gate)
+                    {
+                        Set(id, _jobs[id].Snapshot with { State = retryPrepared is null ? "Cancelled" : "CommitUnknown",
+                            FinishedAt = _clock.GetUtcNow(), Error = retryPrepared is null ? null : "The earlier publication result is still uncertain. Reload its durable state." });
+                        if (retryPrepared is not null) _jobs[id] = _jobs[id] with { RetryPrepared = retryPrepared };
+                    }
+                }
                 catch (Exception failure)
-                { lock (_gate) Set(id, _jobs[id].Snapshot with { State = "Failed", FinishedAt = _clock.GetUtcNow(), Error = "Programme preparation failed (" + failure.GetType().Name + "). Review the source and retry." }); }
+                {
+                    var uncertain = committing || retryPrepared is not null;
+                    var state = uncertain ? "CommitUnknown" : "Failed";
+                    var message = uncertain
+                        ? "The publication result is uncertain. Reload its durable state and retry with the same request ID."
+                        : "Programme preparation failed (" + failure.GetType().Name + "). Review the source and retry.";
+                    lock (_gate)
+                    {
+                        Set(id, _jobs[id].Snapshot with { State = state, FinishedAt = _clock.GetUtcNow(), Error = message });
+                        if (uncertain) _jobs[id] = _jobs[id] with { RetryPrepared = prepared ?? retryPrepared };
+                    }
+                }
                 finally
                 {
                     lock (_gate) { _busy = false; if (ReferenceEquals(_cancel, cancel)) _cancel = null; }

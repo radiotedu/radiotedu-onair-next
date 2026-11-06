@@ -58,4 +58,26 @@ public sealed class ProgrammePreparationJobsTests
         Assert.True(result.Publication!.Active);
         Assert.Equal(1, result.Publication.Version);
     }
+
+    [Fact]
+    public async Task ACommitErrorDoesNotClaimThatTheDurableWriteWasRolledBack()
+    {
+        var preparations = 0; var attempts = 0;
+        Task<PreparedProgramme> Prepare(ProgrammeDraft draft, CancellationToken token)
+        { Interlocked.Increment(ref preparations); return Task.FromResult(new PreparedProgramme(draft, [])); }
+        Task<ProgrammePublication> Publish(PreparedProgramme programme, long version, string id, string actor)
+            => Interlocked.Increment(ref attempts) == 1
+                ? throw new IOException("Acknowledgement lost after the commit could have completed.")
+                : Task.FromResult(new ProgrammePublication(programme, version + 1, true, actor, DateTimeOffset.UtcNow));
+        await using var jobs = new ProgrammePreparationJobs(Prepare, Publish);
+        var draft = Draft(); var id = Guid.NewGuid().ToString("N"); jobs.Start(draft, 0, id, "operator");
+        var result = await AwaitState(jobs, id, "CommitUnknown");
+        Assert.Contains("Reload", result.Error!);
+        Assert.Null(result.Publication);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        while (jobs.Start(draft, 0, id, "operator").State == "CommitUnknown") await Task.Delay(10, timeout.Token);
+        Assert.NotNull((await AwaitState(jobs, id, "Published")).Publication);
+        Assert.Equal(1, preparations);
+        Assert.Equal(2, attempts);
+    }
 }
