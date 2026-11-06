@@ -54,7 +54,7 @@ public sealed class MetadataPublisherTests
         string? address = null, auth = null;
         await using var publisher = new IcecastMetadataPublisher(Settings(), handler: new Handler((request, _) =>
         { address = request.RequestUri!.AbsoluteUri; auth = request.Headers.Authorization?.Parameter; return Task.FromResult(Accepted()); }));
-        publisher.Start(); publisher.SetNowPlaying("Şebnem Ferah", "Yağmurlar & günler"); publisher.SetConnected(true);
+        publisher.SetNowPlaying("Şebnem Ferah", "Yağmurlar & günler"); publisher.SetConnected(true); publisher.Start();
         await Until(() => publisher.Snapshot().Updates == 1);
         Assert.Contains("/admin/metadata?mode=updinfo&charset=UTF-8&mount=%2Fnext-metadata&song=", address);
         Assert.Contains("Şebnem Ferah - Yağmurlar & günler", Uri.UnescapeDataString(address!));
@@ -87,7 +87,7 @@ public sealed class MetadataPublisherTests
     public async Task SourceReconnectRepublishesTheCurrentTitle()
     {
         await using var publisher = new IcecastMetadataPublisher(Settings(), handler: new Handler((_, _) => Task.FromResult(Accepted())));
-        publisher.Start(); publisher.SetNowPlaying("", "current"); publisher.SetConnected(true);
+        publisher.SetNowPlaying("", "current"); publisher.SetConnected(true); publisher.Start();
         await Until(() => publisher.Snapshot().Updates == 1);
         publisher.SetConnected(false); publisher.SetConnected(true);
         await Until(() => publisher.Snapshot().Updates == 2);
