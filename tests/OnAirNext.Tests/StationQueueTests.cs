@@ -132,6 +132,30 @@ public sealed class StationQueueTests
     }
 
     [Fact]
+    public async Task CrashDuringOverlapReturnsBothUnfinishedQueueItemsToPending()
+    {
+        var database = Database();
+        await using (var journal = new EventJournal(database))
+        {
+            await Init(journal); await journal.AppendStationQueueAsync("a", Item("one"), 0, "one");
+            await journal.AppendStationQueueAsync("a", Item("two"), 1, "two");
+            var first = Event("started", "one", occurrence: "first-attempt", item: Item("one"));
+            var second = Event("started", "two", occurrence: "second-attempt", item: Item("two"));
+            await journal.AppendAsync(first, Checkpoint("one") with { Item = Item("one"), OccurrenceId = "first-attempt" });
+            await journal.AppendAsync(second, Checkpoint("two") with { Item = Item("two"), OccurrenceId = "second-attempt" });
+        }
+        await using var reopened = new EventJournal(database);
+        var saved = await reopened.PrepareRecoveryAsync("a");
+        Assert.Equal("second-attempt", saved!.OccurrenceId);
+        var queue = await reopened.ReadStationQueueAsync("a");
+        Assert.Equal(new[] { "one", "two" }, queue.Entries.Select(e => e.Id));
+        Assert.All(queue.Entries, e => Assert.Equal("Pending", e.State));
+        Assert.Equal(2, EventJournal.ReadEvents(database).Count(e => e.Type == "interrupted"));
+        await reopened.PrepareRecoveryAsync("a");
+        Assert.Equal(2, EventJournal.ReadEvents(database).Count(e => e.Type == "interrupted"));
+    }
+
+    [Fact]
     public async Task RecoveredSkipConsumesOnlyItsTargetAndDoesNotAdvanceMusicRotation()
     {
         await using var journal = new EventJournal(Database()); await Init(journal);

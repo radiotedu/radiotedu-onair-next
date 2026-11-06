@@ -133,6 +133,8 @@ public sealed partial class EventJournal
             throw new InvalidDataException("The playout checkpoint is inconsistent. Recovery requires inspection.");
         RecoverOtherProgrammeMusicAttempts(connection, transaction, stationId,
             saved.State == "Playing" && saved.Announced ? saved.OccurrenceId : null, saved);
+        RecoverOtherQueueAttempts(connection, transaction, stationId,
+            saved.State == "Playing" && saved.Announced ? saved.OccurrenceId : null, saved);
         if (saved.State is "Playing" or "RestartPending" or "Stopped" && saved.Item is not null && saved.Announced &&
             HasPendingSkip(connection, transaction, stationId, saved.OccurrenceId))
         {

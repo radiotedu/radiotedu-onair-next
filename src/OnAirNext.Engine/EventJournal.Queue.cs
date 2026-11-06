@@ -221,6 +221,37 @@ public sealed partial class EventJournal
         return ReadQueue(c, t, station);
     }
 
+    // A single dominant checkpoint cannot name both sides of a crossfade. On
+    // restart, every other playing queue entry is kept pending with an explicit
+    // interruption, so overlap cannot silently consume an unfinished request.
+    private void RecoverOtherQueueAttempts(SqliteConnection connection, SqliteTransaction transaction,
+        string station, string? currentAttempt, PlayoutCheckpoint checkpoint)
+    {
+        using var query = LibraryCommand(connection, transaction, """
+            SELECT e.payload FROM station_queue q
+            JOIN playback_events e ON e.occurrence_id=q.occurrence_id AND e.station_id=q.station_id AND e.event_type='started'
+            WHERE q.station_id=$station AND q.state='Playing' AND q.occurrence_id<>$current
+            ORDER BY e.sequence LIMIT 129
+            """, ("$station", station), ("$current", currentAttempt ?? ""));
+        var starts = new List<PlaybackEvent>();
+        using (var reader = query.ExecuteReader())
+            while (reader.Read()) starts.Add(JsonSerializer.Deserialize<PlaybackEvent>(reader.GetString(0))
+                ?? throw new InvalidDataException("An overlapping queue attempt has no start record."));
+        if (starts.Count > MaximumQueuedItems) throw new InvalidDataException("Too many overlapping queue attempts require inspection.");
+        using (var count = LibraryCommand(connection, transaction,
+            "SELECT COUNT(*) FROM station_queue WHERE station_id=$station AND state='Playing' AND (occurrence_id IS NULL OR occurrence_id<>$current)",
+            ("$station", station), ("$current", currentAttempt ?? "")))
+            if (Convert.ToInt32(count.ExecuteScalar()) != starts.Count)
+                throw new InvalidDataException("An unfinished queue attempt has no unique start record.");
+        foreach (var start in starts)
+        {
+            var interrupted = start with { EventId = Guid.NewGuid().ToString("N"), Type = "interrupted", AtUtc = checkpoint.SavedAtUtc,
+                SamplePosition = Math.Max(start.SamplePosition, checkpoint.ProgramSamples), TimingQuality = "last_committed_checkpoint",
+                Detail = "An overlapping queued item was interrupted by a process restart. Its uncommitted tail is unknown." };
+            if (WriteEvent(connection, transaction, interrupted)) RecordQueueAttempt(connection, transaction, interrupted);
+        }
+    }
+
     internal static bool HasUnfinishedStationQueue(SqliteConnection c, SqliteTransaction? t)
     {
         using var table = c.CreateCommand(); table.Transaction = t;
