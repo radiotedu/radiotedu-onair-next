@@ -14,7 +14,7 @@ $resultsForNext = Get-Content -LiteralPath $resultsPathForNext -Raw | ConvertFro
 if (@($resultsForNext.Results | Where-Object { -not $_.Passed }).Count -gt 0) { throw 'This helper archives successful synthetic report fixtures only. Failed test evidence stays local and in the source evidence archive.' }
 $accountForNext = gh api user --jq .login
 if ($LASTEXITCODE -ne 0 -or $accountForNext -ne 'akgularda') { throw 'Expected active GitHub account akgularda. No account switching is performed.' }
-$repositoryForNext = 'akgularda/radiotedu-broadcast-reports'
+$repositoryForNext = 'radiotedu/radiotedu-broadcast-reports'
 $metadataForNext = gh repo view $repositoryForNext --json isPrivate,defaultBranchRef | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or -not $metadataForNext.isPrivate) { throw 'The designated report archive must be private.' }
 $checkoutForNext = Join-Path $localRootForNext 'report-archive'
@@ -23,7 +23,7 @@ if (-not (Test-Path -LiteralPath $checkoutForNext)) {
     if ($LASTEXITCODE -ne 0) { throw 'Report archive clone failed.' }
 }
 $remoteForNext = git -C $checkoutForNext remote get-url origin
-if ($LASTEXITCODE -ne 0 -or $remoteForNext -notin @('https://github.com/akgularda/radiotedu-broadcast-reports.git','git@github.com:akgularda/radiotedu-broadcast-reports.git')) {
+if ($LASTEXITCODE -ne 0 -or $remoteForNext -notin @('https://github.com/radiotedu/radiotedu-broadcast-reports.git','git@github.com:radiotedu/radiotedu-broadcast-reports.git')) {
     throw 'Existing local checkout has an unexpected remote; it was not modified.'
 }
 if (git -C $checkoutForNext status --porcelain) { throw 'Existing report checkout contains changes; preserve them before retrying.' }
