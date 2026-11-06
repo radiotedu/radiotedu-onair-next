@@ -39,6 +39,8 @@ public static class JournalMaintenanceInspection
             throw new InvalidOperationException("Disable automatic branding in the compatible console before application maintenance. Current data was not changed.");
         if(EventJournal.HasUnfinishedStationQueue(connection,null))
             throw new InvalidOperationException("Application maintenance cannot pass unfinished station queues to an older reader. Complete or resolve queued items first. Current data was not changed.");
+        if(EventJournal.HasActiveProgrammePublications(connection,null))
+            throw new InvalidOperationException("Unpublish scheduled programmes in the compatible console before application maintenance. Current data was not changed.");
         using var checkpoints=connection.CreateCommand();checkpoints.CommandText="SELECT payload FROM playout_checkpoints";
         using(var reader=checkpoints.ExecuteReader())
             while(reader.Read())

@@ -162,7 +162,7 @@ internal static class EngineHost
                                         })).ToArray()
                                     } : null,
                                     controller = new { mode = serviceMode ? "windows-service" : "developer", service = serviceMode ? ServiceEndpoint.Name : null,
-                                        capabilities = new[] { "legacy-music-assignment-v1", RecoveryCompatibility.HeldRotationFeature, "branding-library-v1", "private-cue-v1", RecoveryCompatibility.StationQueueFeature, "commissioning-output-profile-v1", "commissioning-output-roster-v1", "programme-drafts-v1" } } });
+                                        capabilities = new[] { "legacy-music-assignment-v1", RecoveryCompatibility.HeldRotationFeature, "branding-library-v1", "private-cue-v1", RecoveryCompatibility.StationQueueFeature, RecoveryCompatibility.ProgrammeAutomationFeature, "commissioning-output-profile-v1", "commissioning-output-roster-v1", "programme-drafts-v1" } } });
                                 break;
                             case "commission-output-profile" when serviceMode && OperatingSystem.IsWindows() && request.OutputProfile is { } outputProfile:
                                 CommissioningOutputStore.RequireAllDisarmed(coordinator.Snapshot());

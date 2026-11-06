@@ -38,6 +38,34 @@ public sealed partial class EventJournal
         if (!RecoveryCompatibility.SupportsHeldRotation(features) &&
             (await RequiresHeldRotationRecoveryAsync() || await RequiresBrandingConfigurationSupportAsync()))
             throw new InvalidOperationException("This journal contains enabled or unfinished automatic branding. Use the compatible console to disable automation and complete or resolve unfinished items before application maintenance; the service was not changed.");
+        if (features?.Contains(RecoveryCompatibility.ProgrammeAutomationFeature, StringComparer.Ordinal) != true &&
+            await RequiresProgrammeAutomationRecoveryAsync())
+            throw new InvalidOperationException("This journal contains an active or unfinished scheduled programme. Use the compatible console before application maintenance; the service was not changed.");
+    }
+
+    public Task<bool> RequiresProgrammeAutomationRecoveryAsync() => TransactionAsync((connection, transaction) =>
+    {
+        if (HasActiveProgrammePublications(connection, transaction)) return true;
+        using var query = connection.CreateCommand(); query.Transaction = transaction;
+        query.CommandText = "SELECT payload FROM playout_checkpoints";
+        using var reader = query.ExecuteReader();
+        while (reader.Read())
+        {
+            var checkpoint = JsonSerializer.Deserialize<PlayoutCheckpoint>(reader.GetString(0))
+                ?? throw new InvalidDataException("A playout checkpoint is empty.");
+            if (checkpoint.Item is not null && (checkpoint.ScheduledOccurrenceKey is not null || checkpoint.ProgrammeMusicKey is not null)) return true;
+        }
+        return false;
+    });
+
+    internal static bool HasActiveProgrammePublications(Microsoft.Data.Sqlite.SqliteConnection connection, Microsoft.Data.Sqlite.SqliteTransaction? transaction)
+    {
+        using var exists = connection.CreateCommand(); exists.Transaction = transaction;
+        exists.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='programme_publication_heads'";
+        if (Convert.ToInt32(exists.ExecuteScalar()) == 0) return false;
+        using var count = connection.CreateCommand(); count.Transaction = transaction;
+        count.CommandText = "SELECT COUNT(*) FROM programme_publication_heads WHERE active=1";
+        return Convert.ToInt32(count.ExecuteScalar()) > 0;
     }
 
     public Task<bool> RequiresHeldRotationRecoveryAsync() => TransactionAsync((connection, transaction) =>

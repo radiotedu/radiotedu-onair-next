@@ -66,4 +66,31 @@ public sealed class ProgrammePublicationTests
         await Assert.ThrowsAsync<IOException>(() => journal.PublishPreparedProgrammeAsync(updated, 0, Id(), "operator", Stations));
         Assert.Empty(await journal.ActiveProgrammePublicationsAsync(Stations));
     }
+
+    [Fact]
+    public async Task ActiveProgrammesCannotBeHandedToAnOlderRecoveryReader()
+    {
+        var root = Root(); var folder = Path.Combine(root, "music"); Directory.CreateDirectory(folder);
+        var database = Path.Combine(root, "playback.db"); var draft = Draft(folder); var prepared = await Prepared(draft);
+        string[] ids = ["1", "2", "4", "5", "8", "9", "10", "11"];
+        await using (var journal = new EventJournal(database))
+        {
+            await Initialize(journal);
+            foreach (var id in ids) await journal.InitializeDesiredStateAsync(new(id, [], [], AutoStart: false));
+            await journal.SaveProgrammeDraftAsync(draft, 0, Id(), "operator", Stations);
+            await journal.PublishPreparedProgrammeAsync(prepared, 0, Id(), "operator", Stations);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => journal.RequireRecoveryReaderAsync(
+                [RecoveryCompatibility.HeldRotationFeature, RecoveryCompatibility.StationQueueFeature]));
+            await journal.RequireRecoveryReaderAsync([RecoveryCompatibility.HeldRotationFeature,
+                RecoveryCompatibility.StationQueueFeature, RecoveryCompatibility.ProgrammeAutomationFeature]);
+        }
+        Assert.Throws<InvalidOperationException>(() => JournalMaintenanceInspection.Read(database, ids));
+        await using (var reopened = new EventJournal(database))
+        {
+            await Initialize(reopened);
+            await reopened.UnpublishProgrammeAsync(draft.Rule.Id, 1, Id(), "operator", Stations);
+            Assert.False(await reopened.RequiresProgrammeAutomationRecoveryAsync());
+        }
+        Assert.Equal("ok", JournalMaintenanceInspection.Read(database, ids).Integrity);
+    }
 }
