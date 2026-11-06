@@ -18,8 +18,9 @@ internal static partial class ProcessingChecks
         await MixedPeakAsync(ffmpeg,root,result,Fixture(root,"mix",192000,0.8f));
         await BrandingChecksAsync(ffmpeg,root,result);
         await PrivateCueChecksAsync(ffmpeg,root,result);
+        await ProgrammeChecksAsync(ffmpeg,root,result);
         Check(result,ChildProcess.ActiveProcesses.Count==0,"Processing qualification closes every owned decoder/validation worker.");
-        result.Details["scope"]="Synthetic final-mix limiting, prepared/audible EOF, automatic branding PCM/order, private cue PCM/seek/cancellation isolation, Stop/Skip/recovery ownership, and bounded asynchronous audit only. No physical audio output, browser/mouse cue, mic/recording, encoded worst-case headroom, HE-AAC/all18 or production acceptance.";
+        result.Details["scope"]="Synthetic final-mix limiting, prepared/audible EOF, automatic branding PCM/order, private cue isolation, timed programme PCM transitions, Stop/Skip/recovery ownership, and bounded asynchronous audit only. No physical audio output, browser/mouse cue, mic/recording, encoded worst-case headroom, HE-AAC/all18 or production acceptance.";
     }
     private static async Task FiniteAsync(string ffmpeg,string root,CaseResult result,MediaItem[] items)
     {
@@ -123,8 +124,8 @@ internal static partial class ProcessingChecks
     private sealed class Capture(string database,bool inspectHistory=true):IProgramOutput
     {
         private long _frames;public long Frames=>Interlocked.Read(ref _frames);public List<float> Samples{get;}=new();
-        public long EventsAtStart{get;private set;}public bool FutureTerminalObserved{get;private set;}public float FirstLeft=>Samples[0];public Action? AfterFirst{get;set;}public Action? AfterEach{get;set;}
-        public void Start(){EventsAtStart=EventJournal.ReadEvents(database).Count;}
+        public long EventsAtStart{get;private set;}public int Starts{get;private set;}public bool FutureTerminalObserved{get;private set;}public float FirstLeft=>Samples[0];public Action? AfterFirst{get;set;}public Action? AfterEach{get;set;}
+        public void Start(){Starts++;EventsAtStart=EventJournal.ReadEvents(database).Count;}
         public bool Publish(PcmBlock block)
         {
             var first=Frames==0;Samples.AddRange(MemoryMarshal.Cast<byte,float>(block.Memory.Span).ToArray());Interlocked.Add(ref _frames,block.Length/AudioFormat.BytesPerSampleFrame);
