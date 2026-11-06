@@ -56,7 +56,7 @@ public sealed class ProgrammeMusicJournalTests
             await journal.InitializeProgrammePlaybackAsync();
             await journal.InitializeDesiredStateAsync(new("4", [], [], AutoStart: false));
             await journal.AppendAsync(Event(key, 0, first, "started"), Checkpoint(first, 0));
-            await journal.AppendAsync(Event(key, 1, second, "started"), Checkpoint(second, 1));
+            await journal.AppendAsync(Event(key, 1, second, "started") with { OverlapWithOccurrenceId = first }, Checkpoint(second, 1));
         }
         await using var reopened = new EventJournal(path); await reopened.InitializeProgrammePlaybackAsync();
         var saved = await reopened.PrepareRecoveryAsync("4");

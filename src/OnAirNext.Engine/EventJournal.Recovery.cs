@@ -66,6 +66,9 @@ public sealed partial class EventJournal
         if (features?.Contains(RecoveryCompatibility.ProgrammeAutomationFeature, StringComparer.Ordinal) != true &&
             await RequiresProgrammeAutomationRecoveryAsync())
             throw new InvalidOperationException("This journal contains an active or unfinished scheduled programme. Use the compatible console before application maintenance; the service was not changed.");
+        if (features?.Contains(RecoveryCompatibility.CrossfadeFeature, StringComparer.Ordinal) != true &&
+            await TransactionAsync((c,t)=>HasCrossfadeRecoveryState(c,t)))
+            throw new InvalidOperationException("This journal contains active or enabled music transitions. Use the compatible console before application maintenance; the service was not changed.");
     }
 
     public Task<bool> RequiresProgrammeAutomationRecoveryAsync() => TransactionAsync((connection, transaction) =>

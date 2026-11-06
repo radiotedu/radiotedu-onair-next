@@ -25,6 +25,8 @@ public sealed class StationCrossfadesTests
             await Assert.ThrowsAsync<InvalidOperationException>(()=>settings.SaveAsync("rock",0,2,command));
             await Assert.ThrowsAsync<ArgumentException>(()=>settings.SaveAsync("rock",1,.1,Guid.NewGuid().ToString("N")));
             Assert.Equal(0,settings.Snapshot("classic").Seconds);Assert.Equal(3,source.Snapshot().Configuration.Seconds);
+            await Assert.ThrowsAsync<InvalidOperationException>(()=>journal.RequireRecoveryReaderAsync([]));
+            await journal.RequireRecoveryReaderAsync([RecoveryCompatibility.CrossfadeFeature]);
         }
         await using(var reopened=new EventJournal(db))
         {

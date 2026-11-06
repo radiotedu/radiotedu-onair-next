@@ -99,7 +99,7 @@ app.MapGet("/api/session", (HttpResponse response) =>
 });
 app.MapGet("/api/engines", () => Results.Json(new { engines = EngineRpc.Discover(), preview = false }));
 app.MapGet("/api/status", async (string engine, CancellationToken token) =>
-    Results.Json(await EngineRpc.SendAsync(engine, new { Id = Guid.NewGuid().ToString("N"), Action = "status", JournalFeatures = new[] { "held-rotation-v1", "station-queue-v1", "programme-automation-v1" } }, token)));
+    Results.Json(await EngineRpc.SendAsync(engine, new { Id = Guid.NewGuid().ToString("N"), Action = "status", JournalFeatures = new[] { "held-rotation-v1", "station-queue-v1", "programme-automation-v1", "crossfade-v1" } }, token)));
 app.MapGet("/api/queue", async (string engine, string station, CancellationToken token) =>
     Results.Json(await EngineRpc.SendAsync(engine, new { Id = Guid.NewGuid().ToString("N"), Action = "queue-status", StationId = station }, token)));
 app.MapGet("/api/library", async (string engine, string station, string? query, int? offset, CancellationToken token) =>

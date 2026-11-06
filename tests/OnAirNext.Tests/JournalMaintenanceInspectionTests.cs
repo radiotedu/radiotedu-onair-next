@@ -36,6 +36,20 @@ public sealed class JournalMaintenanceInspectionTests
         Assert.All(result.Stations,s=>Assert.False(s.RequestedRunning));Assert.False(result.Stations.Single(s=>s.StationId=="4").Enabled);
         Assert.Equal(before,SHA256.HashData(after));
     }
+    [Fact]
+    public async Task MaintenanceRejectsEnabledCrossfadeUntilItIsExplicitlyDisabled()
+    {
+        var path=await CreateAsync();
+        await using(var journal=new EventJournal(path))
+        {
+            await journal.InitializeCrossfadeAsync("9",0);
+            await journal.SaveCrossfadeAsync("9",0,3,Guid.NewGuid().ToString("N"));
+        }
+        Assert.Throws<InvalidOperationException>(()=>JournalMaintenanceInspection.Read(path,Ids));
+        await using(var journal=new EventJournal(path))
+            await journal.SaveCrossfadeAsync("9",1,0,Guid.NewGuid().ToString("N"));
+        Assert.Equal("ok",JournalMaintenanceInspection.Read(path,Ids).Integrity);
+    }
     [Theory]
     [InlineData("UPDATE schema_info SET version=2")]
     [InlineData("DELETE FROM station_desired_state WHERE station_id='1'")]
