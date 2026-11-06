@@ -218,12 +218,18 @@ internal static partial class ServiceProbe
         await RequestAsync(new { Id = Guid.NewGuid().ToString("N"), Action = "stop-station", StationId = musicTarget });
         using (var stopDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(35)))
         {
+            DateTimeOffset? stableSince = null;
             while (true)
             {
                 stopDeadline.Token.ThrowIfCancellationRequested();
                 var stopping = await RequestAsync(new { Id = Guid.NewGuid().ToString("N"), Action = "status" });
                 var stoppedTarget = stopping.GetProperty("stations").EnumerateArray().Single(station => station.GetProperty("Id").GetString() == musicTarget);
-                if (!stoppedTarget.GetProperty("RequestedRunning").GetBoolean() && stoppedTarget.GetProperty("State").GetString() == "Stopped") break;
+                if (!stoppedTarget.GetProperty("RequestedRunning").GetBoolean() && stoppedTarget.GetProperty("State").GetString() == "Stopped")
+                {
+                    stableSince ??= DateTimeOffset.UtcNow;
+                    if (DateTimeOffset.UtcNow - stableSince.Value >= TimeSpan.FromMilliseconds(500)) break;
+                }
+                else stableSince = null;
                 await Task.Delay(100, stopDeadline.Token);
             }
         }

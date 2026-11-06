@@ -4,6 +4,10 @@ using Xunit;
 
 namespace OnAirNext.Tests;
 
+[CollectionDefinition("Crossfade realtime playback",DisableParallelization=true)]
+public sealed class CrossfadeRealtimeCollection { }
+
+[Collection("Crossfade realtime playback")]
 public sealed class CrossfadeStationIntegrationTests
 {
     private sealed class Decoder(float sample,Task? gate=null):IFrameDecoder
