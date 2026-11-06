@@ -190,7 +190,8 @@ public sealed record PlaybackEvent(string EventId, string OccurrenceId, string S
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ScheduledOccurrenceKey = null);
 public sealed record PlayoutSelection(MediaItem Item, string? QueueEntryId = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HoldsRotation = false,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreviousOccurrenceId = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreviousOccurrenceId = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ScheduledOccurrenceKey = null)
 {
     [JsonIgnore] public bool AdvancesRotation => QueueEntryId is null && !HoldsRotation;
 }
@@ -210,7 +211,8 @@ public interface IPlayoutPlanner
 public sealed record PlayoutCheckpoint(string StationId, string State, int RotationIndex, MediaItem? Item,
     string OccurrenceId, long ItemSamples, long ProgramSamples, bool Announced, DateTimeOffset SavedAtUtc,
     string? QueueEntryId = null, string? SessionId = null, string? PreviousOccurrenceId = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HoldsRotation = false);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HoldsRotation = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ScheduledOccurrenceKey = null);
 public sealed record OutputSnapshot(string Id, string State, long EncoderStarts, long Connections, long FramesWritten,
     long DroppedBlocks, int QueuedBlocks, int? EncoderPid, string? LastError,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MetadataSnapshot? Metadata = null);

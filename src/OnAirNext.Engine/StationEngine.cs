@@ -113,7 +113,7 @@ public sealed partial class StationEngine : IStationSession
                 _index=saved.RotationIndex;_samples=saved.ProgramSamples;_lastCheckpoint=saved;
                 if(saved.State is "RestartPending" or "Stopped"&&saved.Item is not null)
                 {
-                    _selection=new(saved.Item,saved.QueueEntryId,saved.HoldsRotation);_previousOccurrence=saved.Announced?saved.OccurrenceId:saved.PreviousOccurrenceId;
+                    _selection=new(saved.Item,saved.QueueEntryId,saved.HoldsRotation,ScheduledOccurrenceKey:saved.ScheduledOccurrenceKey);_previousOccurrence=saved.Announced?saved.OccurrenceId:saved.PreviousOccurrenceId;
                     _itemSamples=0;_announced=false;_recovered=true;
                 }
             }

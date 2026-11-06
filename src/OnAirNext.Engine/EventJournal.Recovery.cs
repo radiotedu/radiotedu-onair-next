@@ -97,6 +97,7 @@ public sealed partial class EventJournal
         if (saved.StationId != stationId || saved.RotationIndex < 0 || saved.ItemSamples < 0 || saved.ProgramSamples < 0 ||
             saved.ItemSamples > saved.ProgramSamples || saved.State is not ("Playing" or "Stopped" or "BetweenItems" or "RestartPending") ||
             (saved.HoldsRotation && (saved.Item is null || saved.QueueEntryId is not null)) ||
+            (saved.ScheduledOccurrenceKey is not null && (saved.Item is null || saved.QueueEntryId is not null || !saved.HoldsRotation || saved.Item.Kind is not (ContentKind.Program or ContentKind.Sweeper))) ||
             (saved.Announced && (saved.Item is null || string.IsNullOrWhiteSpace(saved.OccurrenceId))))
             throw new InvalidDataException("The playout checkpoint is inconsistent. Recovery requires inspection.");
         if (saved.State is "Playing" or "RestartPending" or "Stopped" && saved.Item is not null && saved.Announced &&
@@ -106,8 +107,8 @@ public sealed partial class EventJournal
             var recoveredSkip = new PlaybackEvent(Guid.NewGuid().ToString("N"), saved.OccurrenceId,
                 stationId, "skipped", item.Id, item.Artist, item.Title, item.Kind, saved.SavedAtUtc, saved.ProgramSamples,
                 "A durably accepted Skip was recovered. Playback after the last checkpoint is unknown.",
-                saved.QueueEntryId, saved.PreviousOccurrenceId, "last_committed_checkpoint");
-            if (WriteEvent(connection, transaction, recoveredSkip)) RecordBrandingAttempt(connection, transaction, recoveredSkip);
+                saved.QueueEntryId, saved.PreviousOccurrenceId, "last_committed_checkpoint", ScheduledOccurrenceKey:saved.ScheduledOccurrenceKey);
+            if (WriteEvent(connection, transaction, recoveredSkip)) { RecordBrandingAttempt(connection, transaction, recoveredSkip); RecordScheduledAttempt(connection, transaction, recoveredSkip); }
             RecordQueueAttempt(connection, transaction, recoveredSkip);
             ConsumeSkips(connection, transaction, stationId, saved.OccurrenceId);
             if (saved.QueueEntryId is not null)
@@ -122,7 +123,7 @@ public sealed partial class EventJournal
                 }
             }
             var skipped = saved with { State = "BetweenItems", RotationIndex = saved.RotationIndex + (saved.QueueEntryId is null && !saved.HoldsRotation ? 1 : 0),
-                Item = null, ItemSamples = 0, Announced = false, QueueEntryId = null, HoldsRotation = false };
+                Item = null, ItemSamples = 0, Announced = false, QueueEntryId = null, HoldsRotation = false, ScheduledOccurrenceKey = null };
             WriteCheckpoint(connection, transaction, skipped);
             return skipped;
         }
@@ -134,8 +135,8 @@ public sealed partial class EventJournal
                 Guid.NewGuid().ToString("N"), saved.OccurrenceId, stationId, "interrupted", item.Id,
                 item.Artist, item.Title, item.Kind, saved.SavedAtUtc, saved.ProgramSamples,
                 "Process interruption detected on restart. Duration is a lower bound from the last committed checkpoint; the uncommitted tail is unknown.",
-                saved.QueueEntryId, saved.PreviousOccurrenceId, "last_committed_checkpoint");
-            WriteEvent(connection, transaction, interrupted);
+                saved.QueueEntryId, saved.PreviousOccurrenceId, "last_committed_checkpoint", ScheduledOccurrenceKey:saved.ScheduledOccurrenceKey);
+            if (WriteEvent(connection, transaction, interrupted)) RecordScheduledAttempt(connection, transaction, interrupted);
             RecordQueueAttempt(connection, transaction, interrupted);
         }
         var prepared = saved with { State = "RestartPending" };

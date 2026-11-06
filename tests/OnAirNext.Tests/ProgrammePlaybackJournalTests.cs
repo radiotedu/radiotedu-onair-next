@@ -57,4 +57,28 @@ public sealed class ProgrammePlaybackJournalTests
         await journal.AppendAsync(Event(key, second, "ended"));
         Assert.Equal("Completed", (await journal.ScheduledOccurrenceAsync(key, "4"))!.State);
     }
+
+    [Fact]
+    public async Task CrashRecoveryMarksTheInterruptedScheduledAttemptBeforeRestart()
+    {
+        var path = Database(); var key = Key(); var attempt = Guid.NewGuid().ToString("N");
+        var item = new MediaItem("remembrance", "fixture.opus", "", "Remembrance", ContentKind.Program);
+        var checkpoint = new PlayoutCheckpoint("4", "Playing", 12, item, attempt, 48000, 96000, true,
+            DateTimeOffset.UtcNow, HoldsRotation: true, ScheduledOccurrenceKey: key);
+        await using (var journal = new EventJournal(path))
+        {
+            await journal.InitializeProgrammePlaybackAsync();
+            await journal.InitializeDesiredStateAsync(new("4", [], [], AutoStart: false));
+            await journal.AppendAsync(Event(key, attempt, "started"), checkpoint);
+        }
+        await using var reopened = new EventJournal(path); await reopened.InitializeProgrammePlaybackAsync();
+        var recovered = await reopened.PrepareRecoveryAsync("4");
+        Assert.Equal("RestartPending", recovered!.State); Assert.Equal(key, recovered.ScheduledOccurrenceKey);
+        Assert.Equal("Interrupted", (await reopened.ScheduledOccurrenceAsync(key, "4"))!.State);
+        await reopened.PrepareRecoveryAsync("4");
+        Assert.Single(EventJournal.ReadEvents(path), e => e.Type == "interrupted" && e.ScheduledOccurrenceKey == key);
+        var retry = Guid.NewGuid().ToString("N"); await reopened.AppendAsync(Event(key, retry, "started"));
+        await reopened.AppendAsync(Event(key, retry, "ended"));
+        Assert.Equal("Completed", (await reopened.ScheduledOccurrenceAsync(key, "4"))!.State);
+    }
 }

@@ -102,6 +102,7 @@ internal static class EngineHost
             if (serviceMode) WindowsServiceDiagnostics.Stage("library initialization");
             await branding.InitializeAsync();
             await library.InitializeAsync();
+            await journal.InitializeProgrammePlaybackAsync();
             if (serviceMode) WindowsServiceDiagnostics.Stage("coordinator initialization");
             await coordinator.InitializeAsync(queues.InitializeAsync);
             await journal.InitializeProgrammeDraftsAsync();

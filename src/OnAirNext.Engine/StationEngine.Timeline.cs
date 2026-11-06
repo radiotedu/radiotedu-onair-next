@@ -45,7 +45,7 @@ public sealed partial class StationEngine
         var checkpoint=new PlayoutCheckpoint(_settings.Id,between?"BetweenItems":"Playing",
             _index+(between&&_selection?.AdvancesRotation==true?1:0),between?null:_selection?.Item,_occurrence,
             between?0:_itemSamples,position,!between&&_announced,default,between?null:_selection?.QueueEntryId,_sessionId,_previousOccurrence,
-            !between&&_selection?.HoldsRotation==true);
+            !between&&_selection?.HoldsRotation==true,between?null:_selection?.ScheduledOccurrenceKey);
         _boundaries.Enqueue(new(type,position,detail,cursor,checkpoint));
     }
     // Start at the end of the published span is still unheard. Terminal at that end belongs to the published span.
@@ -58,7 +58,7 @@ public sealed partial class StationEngine
             var entry=new PlaybackEvent(Guid.NewGuid().ToString("N"),cursor.Occurrence,_settings.Id,boundary.Type,
                 item.Id,item.Artist,item.Title,item.Kind,_anchor.AddSeconds((double)boundary.Position/AudioFormat.SampleRate),
                 boundary.Position,boundary.Detail,cursor.Selection.QueueEntryId,cursor.PreviousOccurrence,
-                SourceGain:SourceNormalization.Decide(item.Loudness));
+                SourceGain:SourceNormalization.Decide(item.Loudness),ScheduledOccurrenceKey:cursor.Selection.ScheduledOccurrenceKey);
             var checkpoint=boundary.Checkpoint with{SavedAtUtc=DateTimeOffset.UtcNow};
             var terminal=boundary.Type is "ended" or "skipped" or "failed" or "decode_failed" or "queue_deferred";
             QueueAudit(()=>_journal.AppendAsync(entry,checkpoint),terminal?cursor.Selection.QueueEntryId:null);
@@ -100,7 +100,7 @@ public sealed partial class StationEngine
     {
         var cursor=Volatile.Read(ref _audible);
         if(cursor is not null)return new(_settings.Id,state,cursor.RotationIndex,cursor.Selection.Item,cursor.Occurrence,
-            cursor.ItemSamples,_samples,true,DateTimeOffset.UtcNow,cursor.Selection.QueueEntryId,_sessionId,cursor.PreviousOccurrence,cursor.Selection.HoldsRotation);
+            cursor.ItemSamples,_samples,true,DateTimeOffset.UtcNow,cursor.Selection.QueueEntryId,_sessionId,cursor.PreviousOccurrence,cursor.Selection.HoldsRotation,cursor.Selection.ScheduledOccurrenceKey);
         return (_lastCheckpoint??new(_settings.Id,"BetweenItems",_index,null,"",0,_samples,false,default,SessionId:_sessionId))
             with{ProgramSamples=_samples,SavedAtUtc=DateTimeOffset.UtcNow};
     }
@@ -108,10 +108,10 @@ public sealed partial class StationEngine
     {
         var cursor=Volatile.Read(ref _audible);if(cursor is null)return;
         var item=cursor.Selection.Item;var checkpoint=AudibleCheckpoint(type=="interrupted"?"Stopped":"BetweenItems");
-        if(type!="interrupted")checkpoint=checkpoint with{RotationIndex=cursor.RotationIndex+(cursor.Selection.AdvancesRotation?1:0),Item=null,ItemSamples=0,Announced=false,QueueEntryId=null,HoldsRotation=false};
+        if(type!="interrupted")checkpoint=checkpoint with{RotationIndex=cursor.RotationIndex+(cursor.Selection.AdvancesRotation?1:0),Item=null,ItemSamples=0,Announced=false,QueueEntryId=null,HoldsRotation=false,ScheduledOccurrenceKey=null};
         var entry=new PlaybackEvent(Guid.NewGuid().ToString("N"),cursor.Occurrence,_settings.Id,type,item.Id,item.Artist,item.Title,
             item.Kind,_anchor.AddSeconds((double)_samples/AudioFormat.SampleRate),_samples,detail,cursor.Selection.QueueEntryId,cursor.PreviousOccurrence,
-            SourceGain:SourceNormalization.Decide(item.Loudness));
+            SourceGain:SourceNormalization.Decide(item.Loudness),ScheduledOccurrenceKey:cursor.Selection.ScheduledOccurrenceKey);
         QueueAudit(()=>_journal.AppendAsync(entry,checkpoint),type=="interrupted"?null:cursor.Selection.QueueEntryId);_lastCheckpoint=checkpoint;
     }
     private void QueueAudit(Func<Task> submit,string? releaseQueueEntry=null)
