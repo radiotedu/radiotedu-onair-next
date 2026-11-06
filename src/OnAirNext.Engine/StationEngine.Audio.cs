@@ -5,11 +5,12 @@ namespace OnAirNext.Engine;
 public sealed partial class StationEngine
 {
     private Exception? _decoderFault;
-    private sealed class PreparedSource(PlayoutSelection selection,DecoderPreparation.Source? decoder,Exception? fault)
+    private sealed class PreparedSource(PlayoutSelection selection,DecoderPreparation.Source? decoder,Exception? fault,NextPcmPrefetch? prefetch=null)
     {
         public PlayoutSelection Selection {get;}=selection;
         public DecoderPreparation.Source? Decoder {get;}=decoder;
         public Exception? Fault {get;set;}=fault;
+        public NextPcmPrefetch? Prefetch {get;}=prefetch;
     }
     private async ValueTask<PcmBlock?> RenderNextAsync(CancellationToken token)
     {
@@ -60,7 +61,8 @@ public sealed partial class StationEngine
                 try
                 {
                     if(_decoderFault is not null)throw _decoderFault;
-                    _decoded=await (_decoder??throw new InvalidDataException("The selected source has no decoder.")).ReadAsync(token);
+                    _decoded=_currentPrefetch is not null?await _currentPrefetch.ReadAsync(token)
+                        :await (_decoder??throw new InvalidDataException("The selected source has no decoder.")).ReadAsync(token);
                 }
                 catch(Exception ex)when(ex is not OperationCanceledException)
                 {
@@ -168,12 +170,19 @@ public sealed partial class StationEngine
             if(found is not null)retained.Remove(found);return found;
         }
         var nextPrepared=Take(desired);var secondPrepared=Take(second);var fallbackPrepared=Take(fallback);
-        foreach(var stale in retained)if(stale.Decoder is not null)_decoders.Retire(stale.Decoder);
+        foreach(var stale in retained)RetireSource(stale.Decoder,stale.Prefetch);
         var created=new List<PreparedSource>(3);
         PreparedSource? Make(PlayoutSelection? target,PreparedSource? existing)
         {
             if(target is null)return null;if(existing is not null)return existing;
-            var decoder=CreatePreparedDecoder(target,out var fault);var prepared=new PreparedSource(target,decoder,fault);created.Add(prepared);return prepared;
+            var decoder=CreatePreparedDecoder(target,out var fault);NextPcmPrefetch? prefetch=null;
+            try
+            {
+                if(decoder is not null&&_settings.CrossfadeSeconds>0&&_selection?.Item.Kind==ContentKind.Music&&target.Item.Kind==ContentKind.Music)
+                    prefetch=new NextPcmPrefetch(decoder,(int)Math.Ceiling(_settings.CrossfadeSeconds*50)+10);
+                var prepared=new PreparedSource(target,decoder,fault,prefetch);created.Add(prepared);return prepared;
+            }
+            catch{RetireSource(decoder,prefetch);throw;}
         }
         try
         {
@@ -183,7 +192,7 @@ public sealed partial class StationEngine
         }
         catch
         {
-            foreach(var source in created)if(source.Decoder is not null)_decoders.Retire(source.Decoder);throw;
+            foreach(var source in created)RetireSource(source.Decoder,source.Prefetch);throw;
         }
         // At most two branding categories and one ordinary fallback are prepared
         // alongside the current decoder. Both collision clips are warm even when
@@ -208,12 +217,28 @@ public sealed partial class StationEngine
         if(ReferenceEquals(chosen,_nextSource))_nextSource=null;
         else if(ReferenceEquals(chosen,_musicFallback))_musicFallback=null;
         _decoded?.Dispose();_decoded=null;
-        if(_decoder is not null)_decoders.Retire(_decoder);
-        _decoder=chosen?.Decoder;_decoderFault=chosen?.Fault;
+        RetireSource(_decoder,_currentPrefetch);
+        _decoder=chosen?.Decoder;_currentPrefetch=chosen?.Prefetch;_decoderFault=chosen?.Fault;
         if(_selection?.AdvancesRotation==true)_index++;
         _selection=chosen?.Selection;_announced=false;_occurrence=Guid.NewGuid().ToString("N");
         _previousOccurrence=null;_itemSamples=0;
         if(_selection is not null){TrackSelection(_selection);await PrepareNextAsync();}
+    }
+    private void RetireSource(DecoderPreparation.Source? source,NextPcmPrefetch? prefetch)
+    {
+        if(prefetch is null){if(source is not null)_decoders.Retire(source);return;}
+        var cleanup=Task.Run(async()=>
+        {
+            try{await prefetch.DisposeAsync();}
+            finally{if(source is not null)await source.DisposeAsync();}
+        });
+        _prefetchRetirements.TryAdd(cleanup,0);
+        _=cleanup.ContinueWith(task=>
+        {
+            if(task.Exception is {} failure)Interlocked.CompareExchange(ref _prefetchCleanupError,failure.GetBaseException(),null);
+            else if(task.IsCanceled)Interlocked.CompareExchange(ref _prefetchCleanupError,new OperationCanceledException("Prepared PCM cleanup was cancelled."),null);
+            _prefetchRetirements.TryRemove(task,out _);
+        },CancellationToken.None,TaskContinuationOptions.ExecuteSynchronously,TaskScheduler.Default);
     }
     private async ValueTask ApplySkipsAsync()
     {

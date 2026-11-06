@@ -100,14 +100,16 @@ public sealed class DecoderPreparationTests
         Assert.Equal(1,pool.Snapshot().Active);Assert.Equal(1,pool.Snapshot().Owned);Assert.Equal("IOException",pool.Snapshot().CleanupError);
         await pool.DisposeAsync();Assert.Equal(2,decoder.ReleaseAttempts);Assert.Equal(0,pool.Snapshot().Active);Assert.Equal(0,pool.Snapshot().Owned);
     }
-    [Fact]
-    public async Task SlowFutureOpenAndOldSourceCleanupDoNotPauseCurrentProgrammeSamples()
+    [Theory]
+    [InlineData(0)]
+    [InlineData(3)]
+    public async Task SlowFutureOpenAndOldSourceCleanupDoNotPauseCurrentProgrammeSamples(double crossfadeSeconds)
     {
         var root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"RadioTEDU","OnAirNext-Dev","unit-tests",Guid.NewGuid().ToString("N"));
         await using var journal=new EventJournal(Path.Combine(root,"decoder-continuity.db"));
         using var open=new ManualResetEventSlim();var futureEntered=Signal();var close=Signal();var oldClosing=Signal();
         var output=new Output();var items=new[]{Item with{Id="first"},Item with{Id="second"},Item with{Id="future"}};
-        var settings=new StationSettings("test",items,[],Repeat:true);
+        var settings=new StationSettings("test",items,[],Repeat:true,CrossfadeSeconds:crossfadeSeconds);
         await using var station=new StationEngine("unused",settings,journal,[output],null,null,item=>
         {
             if(item.Id=="future"){futureEntered.TrySetResult();open.Wait();}

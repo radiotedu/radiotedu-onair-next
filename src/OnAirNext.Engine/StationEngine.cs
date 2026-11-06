@@ -24,7 +24,10 @@ public sealed partial class StationEngine : IStationSession
     private readonly CancellationTokenSource _stop=new();
     private Task? _run;
     private DecoderPreparation.Source? _decoder;
+    private NextPcmPrefetch? _currentPrefetch;
     private PreparedSource? _nextSource,_secondBrand,_musicFallback;
+    private readonly ConcurrentDictionary<Task, byte> _prefetchRetirements = new();
+    private Exception? _prefetchCleanupError;
     private PcmBlock? _decoded;
     private int _decodedOffset,_index;
     private bool _announced;
@@ -53,6 +56,8 @@ public sealed partial class StationEngine : IStationSession
         if(settings.Playlist.Count==0&&planner is null)throw new ArgumentException("An approved nonempty playlist is required.");
         if(settings.Outputs.Select(x=>x.Id).Distinct().Count()!=settings.Outputs.Count)throw new ArgumentException("Output IDs must be unique.");
         if(settings.Outputs.Select(x=>(x.Host,x.Port,x.Mount)).Distinct().Count()!=settings.Outputs.Count)throw new ArgumentException("Duplicate source ownership is prohibited.");
+        if(!double.IsFinite(settings.CrossfadeSeconds)||settings.CrossfadeSeconds<0||settings.CrossfadeSeconds>15||
+            settings.CrossfadeSeconds>0&&settings.CrossfadeSeconds<.5)throw new ArgumentException("Crossfade must be disabled or between 0.5 and 15 seconds.");
         _settings=settings;_journal=journal;_planner=planner;_branding=branding;
         _decoders=new(decoderFactory??(item=>new MediaDecoder(ffmpeg,item)));
         _validateEncoders=validateEncoders??(()=>EncoderCapabilities.ValidateAsync(ffmpeg,settings.Outputs));
@@ -196,8 +201,17 @@ public sealed partial class StationEngine : IStationSession
     }
     private async Task ReleaseDecodersAsync()
     {
+        RetireSource(_decoder,_currentPrefetch);
+        foreach(var source in new[]{_nextSource,_secondBrand,_musicFallback})
+            if(source is not null)RetireSource(source.Decoder,source.Prefetch);
+        while(!_prefetchRetirements.IsEmpty)
+        {
+            try{await Task.WhenAll(_prefetchRetirements.Keys.ToArray());}
+            catch(Exception error){Interlocked.CompareExchange(ref _prefetchCleanupError,error,null);}
+        }
         await _decoders.DisposeAsync();
-        _decoder=null;_nextSource=null;_secondBrand=null;_musicFallback=null;
+        _decoder=null;_currentPrefetch=null;_nextSource=null;_secondBrand=null;_musicFallback=null;
+        if(_prefetchCleanupError is not null)throw new IOException("A prepared PCM source could not be retired.",_prefetchCleanupError);
     }
     private async Task ReleaseOutputAsync(int index){await _outputs[index].DisposeAsync();_releasedOutputs[index]=true;}
 }
