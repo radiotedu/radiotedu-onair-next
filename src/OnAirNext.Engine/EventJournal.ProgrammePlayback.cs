@@ -15,6 +15,12 @@ public sealed partial class EventJournal
             CREATE TABLE IF NOT EXISTS scheduled_playout_occurrences(
                 key TEXT PRIMARY KEY, station_id TEXT NOT NULL, attempt_id TEXT NOT NULL,
                 state TEXT NOT NULL, attempts INTEGER NOT NULL, updated_utc TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS programme_music_progress(
+                key TEXT PRIMARY KEY, station_id TEXT NOT NULL, next_position INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS programme_music_attempts(
+                attempt_id TEXT PRIMARY KEY, key TEXT NOT NULL, station_id TEXT NOT NULL,
+                position INTEGER NOT NULL, state TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS programme_music_attempts_occurrence ON programme_music_attempts(key,position);
             """;
         command.ExecuteNonQuery(); return true;
     });

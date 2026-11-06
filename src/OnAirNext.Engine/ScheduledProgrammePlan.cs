@@ -36,7 +36,8 @@ public sealed record ScheduledProgrammePlan(PlayoutSelection? Selection, string?
         var cycle = musicPosition / items.Count;
         var offset = (int)(musicPosition % items.Count);
         var music = ProgrammeMusicOrder.PrepareCycle(items, programme.Order, occurrence.Key, cycle)[offset];
-        return new(new(music, HoldsRotation: true), text, occurrence.Key, programme.SuppressStationBranding,
+        return new(new(music, HoldsRotation: true, ProgrammeMusicKey: occurrence.Key, ProgrammeMusicPosition: musicPosition),
+            text, occurrence.Key, programme.SuppressStationBranding,
             selected.NextOccurrence, NextInsertion(selected.NextOccurrence));
     }
 }
