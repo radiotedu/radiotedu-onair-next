@@ -105,6 +105,7 @@ app.MapGet("/api/queue", async (string engine, string station, CancellationToken
 app.MapGet("/api/library", async (string engine, string station, string? query, int? offset, CancellationToken token) =>
     Results.Json(await EngineRpc.SendAsync(engine, new { Id = Guid.NewGuid().ToString("N"), Action = "library-status", StationId = station, Query = query ?? "", Offset = offset ?? 0 }, token)));
 app.MapProgrammeDrafts();
+app.MapProgrammePublication();
 app.MapGet("/api/branding", async (string engine, string station, CancellationToken token) =>
     Results.Json(await EngineRpc.SendAsync(engine, new { Id = Guid.NewGuid().ToString("N"), Action = "branding-status", StationId = station }, token)));
 app.MapGet("/api/migration-preview", async (string engine, string? id, CancellationToken token) =>

@@ -1,6 +1,6 @@
 namespace OnAirNext.Engine;
 
-public sealed record ProgrammePublicationSummary(string Id, long Version, bool Active, string Name,
+public sealed record ProgrammePublicationSummary(string Id, long Version, long DraftVersion, bool Active, string Name,
     IReadOnlyList<string> Stations, int AudioItems, string? DisplayText, DateTimeOffset UpdatedAtUtc);
 public sealed record ProgrammePreparationStatus(string Id, string ProgrammeId, string State,
     DateTimeOffset RequestedAt, DateTimeOffset? FinishedAt, ProgrammePublicationSummary? Publication, string? Error);
@@ -58,7 +58,7 @@ public sealed class ProgrammePublicationControl : IAsyncDisposable
         => new(value.Id, value.ProgrammeId, value.State, value.RequestedAt, value.FinishedAt,
             value.Publication is null ? null : Summary(value.Publication), value.Error);
     private static ProgrammePublicationSummary Summary(ProgrammePublication value)
-        => new(value.Id, value.Version, value.Active, value.Programme.Draft.Rule.Name,
+        => new(value.Id, value.Version, value.Programme.Draft.Rule.Version, value.Active, value.Programme.Draft.Rule.Name,
             value.Programme.Draft.Rule.Stations, value.Programme.Items.Count, value.Programme.Draft.DisplayText, value.AtUtc);
 
     public async ValueTask DisposeAsync()

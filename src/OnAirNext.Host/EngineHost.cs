@@ -77,6 +77,13 @@ internal static class EngineHost
         using var branding = new StationBranding(journal,library,brandingStations);
         using var queues = new StationQueues(journal,library,brandingStations);
         await using var programmes = new ProgrammeRuntimeCoordinator(journal,config.Stations.Select(station=>station.Id));
+        await using var programmeControl = new ProgrammePublicationControl(journal,new ProgrammeMediaPreparation(config.Ffmpeg),config.Stations.Select(station=>station.Id));
+        programmeControl.Changed += () =>
+        {
+            var refresh = programmes.RefreshAsync(stop.Token);
+            _ = refresh.ContinueWith(task => _ = task.Exception, CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        };
         await using var coordinator = new StationCoordinator(config.Ffmpeg, config.Stations, journal,
             settings => new StationEngine(config.Ffmpeg, settings, journal,
                 outputs: config.Commissioning ? settings.Outputs.Select(output => (IProgramOutput)new IcecastOutput(config.Ffmpeg, output, LegacyServiceFence.ForOutput(output))).ToArray() : null,
@@ -165,7 +172,7 @@ internal static class EngineHost
                                         })).ToArray()
                                     } : null,
                                     controller = new { mode = serviceMode ? "windows-service" : "developer", service = serviceMode ? ServiceEndpoint.Name : null,
-                                        capabilities = new[] { "legacy-music-assignment-v1", RecoveryCompatibility.HeldRotationFeature, "branding-library-v1", "private-cue-v1", RecoveryCompatibility.StationQueueFeature, RecoveryCompatibility.ProgrammeAutomationFeature, "commissioning-output-profile-v1", "commissioning-output-roster-v1", "programme-drafts-v1" } } });
+                                        capabilities = new[] { "legacy-music-assignment-v1", RecoveryCompatibility.HeldRotationFeature, "branding-library-v1", "private-cue-v1", RecoveryCompatibility.StationQueueFeature, RecoveryCompatibility.ProgrammeAutomationFeature, "commissioning-output-profile-v1", "commissioning-output-roster-v1", "programme-drafts-v1", "programme-execution-v1" } } });
                                 break;
                             case "commission-output-profile" when serviceMode && OperatingSystem.IsWindows() && request.OutputProfile is { } outputProfile:
                                 CommissioningOutputStore.RequireAllDisarmed(coordinator.Snapshot());
@@ -206,6 +213,18 @@ internal static class EngineHost
                             case "programme-draft-preview" when request.PreviewFrom is { } previewFrom:
                                 var draftForecast = await journal.PreviewProgrammeDraftsAsync(programmeStations, ProgrammeCalendar.ParseIstanbulMinute(previewFrom), request.StationId, request.ProgrammeDraft);
                                 result = JsonSerializer.Serialize(new { preview = ProgrammeDraftForecastPage.From(draftForecast, request.Offset) }); break;
+                            case "programme-publication" when request.DraftId is { } publicationId:
+                                result = JsonSerializer.Serialize(new { publication = await programmeControl.PublicationAsync(publicationId), runtime = programmes.Snapshot().Healthy }); break;
+                            case "programme-prepare" when request.DraftId is { } publishDraft:
+                                result = JsonSerializer.Serialize(new { accepted = true, job = await programmeControl.StartAsync(publishDraft, request.SourceVersion,
+                                    request.ExpectedVersion, request.Id, programmeActor) }); break;
+                            case "programme-preparation" when request.ProgrammeJobId is { } preparationId:
+                                result = JsonSerializer.Serialize(new { job = programmeControl.Get(preparationId) }); break;
+                            case "programme-preparation-cancel" when request.ProgrammeJobId is { } cancelPreparation:
+                                result = JsonSerializer.Serialize(new { accepted = true, job = programmeControl.Cancel(cancelPreparation) }); break;
+                            case "programme-unpublish" when request.DraftId is { } unpublishDraft:
+                                result = JsonSerializer.Serialize(new { accepted = true, publication = await programmeControl.UnpublishAsync(unpublishDraft,
+                                    request.ExpectedVersion, request.Id, programmeActor) }); break;
                             case "queue-status" when request.StationId is { } queueStation:
                                 result=JsonSerializer.Serialize(new{queue=await queues.SnapshotAsync(queueStation)});break;
                             case "queue-append" when request.StationId is { } appendStation && request.QueueSource is { } queueSource:
@@ -357,4 +376,4 @@ internal sealed record EngineCommand(string Id, string Action, string? StationId
     long Revision = 0, long ExpectedVersion = 0, string? Artist = null, string? Title = null, string? SourceCheckId = null, string? ReportPeriod = null, string? ReportSelection = null, string? ReportId = null, string? PreviewId = null, LegacyStationMapping[]? Mappings = null, int? MappingRevision = null, string[]? JournalFeatures = null, BrandingRules? BrandingRules = null,
     QueueLibraryReference? QueueSource = null,long QueueRevision = 0,string? QueueEntryId = null,
     ProductionOutputConfiguration? OutputProfile = null, ProgrammeDraft? ProgrammeDraft = null,
-    string? DraftId = null, long SourceVersion = 0, string? PreviewFrom = null, bool IncludeArchived = false);
+    string? DraftId = null, long SourceVersion = 0, string? PreviewFrom = null, bool IncludeArchived = false, string? ProgrammeJobId = null);

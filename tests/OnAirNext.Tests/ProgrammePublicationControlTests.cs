@@ -52,9 +52,11 @@ public sealed class ProgrammePublicationControlTests
         var stored = await control.PublicationAsync(draft.Rule.Id);
         Assert.NotNull(stored); Assert.Equal(result.Publication.Id, stored.Id);
         Assert.Equal(result.Publication.Version, stored.Version); Assert.Equal(result.Publication.AudioItems, stored.AudioItems);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => journal.ArchiveProgrammeDraftAsync(draft.Rule.Id, 1, Id(), "operator", Stations));
         await Assert.ThrowsAsync<InvalidOperationException>(() => control.StartAsync(draft.Rule.Id, 2, 1, Id(), "operator"));
         var stopped = await control.UnpublishAsync(draft.Rule.Id, 1, Id(), "operator");
         Assert.False(stopped.Active); Assert.Equal(2, stopped.Version);
+        Assert.True((await journal.ArchiveProgrammeDraftAsync(draft.Rule.Id, 1, Id(), "operator", Stations)).Archived);
         Assert.Equal(2, notifications);
         Assert.Empty(await journal.ActiveProgrammePublicationsAsync(Stations));
     }

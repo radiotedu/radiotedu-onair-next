@@ -67,11 +67,23 @@ public sealed partial class EventJournal
             var current = ProgrammeHead(c, t, draftKey, known) ?? throw new InvalidOperationException("This programme is unavailable.");
             if (current.Version != expectedVersion) throw new InvalidOperationException("This programme changed. Reload before changing its saved state.");
             if (sourceVersion is null && current.Archived) throw new InvalidOperationException("This programme is already archived.");
+            if (sourceVersion is null && ProgrammeIsPublished(c, t, draftKey))
+                throw new InvalidOperationException("Cancel the active schedule before archiving this programme.");
             var source = sourceVersion is { } version ? ReadProgrammeRevision(c, t, draftKey, version, known) : current;
             var next = source.Draft with { Rule = source.Draft.Rule with { Version = checked(expectedVersion + 1), Enabled = false } };
             return WriteProgrammeRevision(c, t, new(next, sourceVersion is null, actor, DateTimeOffset.UtcNow,
                 sourceVersion is null ? "Archived" : "Restored as draft", sourceVersion), current, id, request, known);
         });
+    }
+
+    private static bool ProgrammeIsPublished(SqliteConnection connection, SqliteTransaction transaction, string id)
+    {
+        using var exists = ProgrammeDraftCommand(connection, transaction,
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='programme_publication_heads'");
+        if (Convert.ToInt32(exists.ExecuteScalar(), CultureInfo.InvariantCulture) == 0) return false;
+        using var active = ProgrammeDraftCommand(connection, transaction,
+            "SELECT COUNT(*) FROM programme_publication_heads WHERE id=$id AND active=1", ("$id", id));
+        return Convert.ToInt32(active.ExecuteScalar(), CultureInfo.InvariantCulture) != 0;
     }
 
     public Task<ProgrammeDraftPage> ProgrammeDraftsAsync(IReadOnlySet<string> installedStations, string? station = null,
