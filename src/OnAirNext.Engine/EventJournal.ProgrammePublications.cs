@@ -92,6 +92,13 @@ public sealed partial class EventJournal
         return TransactionAsync((connection, transaction) => PublicationHead(connection, transaction, key, known));
     }
 
+    public Task<long> ProgrammePublicationSequenceAsync() => TransactionAsync((connection, transaction) =>
+    {
+        using var command = PublicationCommand(connection, transaction,
+            "SELECT COALESCE(MAX(rowid),0) FROM programme_publication_versions");
+        return Convert.ToInt64(command.ExecuteScalar(), CultureInfo.InvariantCulture);
+    });
+
     private static ProgrammePublication WritePublication(SqliteConnection c, SqliteTransaction t, ProgrammePublication value,
         ProgrammePublication? previous, string commandId, string requestHash)
     {

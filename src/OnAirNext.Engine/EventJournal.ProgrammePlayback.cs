@@ -31,6 +31,30 @@ public sealed partial class EventJournal
         return TransactionAsync((connection, transaction) => ReadScheduledOccurrence(connection, transaction, key));
     }
 
+    public Task<IReadOnlySet<string>> CompletedScheduledOccurrencesAsync(string station, IEnumerable<string> occurrenceKeys)
+    {
+        ArgumentNullException.ThrowIfNull(occurrenceKeys);
+        if (string.IsNullOrWhiteSpace(station) || station.Length > 64 || station.Contains('/'))
+            throw new ArgumentException("Choose a valid station.");
+        var keys = occurrenceKeys.Distinct(StringComparer.Ordinal).Take(ProgrammeCalendar.MaximumOccurrences + 1).ToArray();
+        if (keys.Length > ProgrammeCalendar.MaximumOccurrences) throw new ArgumentException("Too many scheduled occurrences.");
+        foreach (var key in keys) ValidateScheduledKey(key, station);
+        return TransactionAsync<IReadOnlySet<string>>((connection, transaction) =>
+        {
+            var completed = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var batch in keys.Chunk(64))
+            {
+                using var command = connection.CreateCommand(); command.Transaction = transaction;
+                var parameters = batch.Select((_, index) => "$key" + index.ToString(CultureInfo.InvariantCulture)).ToArray();
+                command.CommandText = "SELECT key FROM scheduled_playout_occurrences WHERE station_id=$station AND state='Completed' AND key IN (" + string.Join(',', parameters) + ")";
+                command.Parameters.AddWithValue("$station", station);
+                for (var index = 0; index < batch.Length; index++) command.Parameters.AddWithValue(parameters[index], batch[index]);
+                using var reader = command.ExecuteReader(); while (reader.Read()) completed.Add(reader.GetString(0));
+            }
+            return completed;
+        });
+    }
+
     private static void RecordScheduledAttempt(SqliteConnection connection, SqliteTransaction transaction, PlaybackEvent entry)
     {
         var key = entry.ScheduledOccurrenceKey;
