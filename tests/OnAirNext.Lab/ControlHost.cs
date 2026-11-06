@@ -21,7 +21,8 @@ internal sealed class ControlHost : IAsyncDisposable
 
     internal Task<JsonDocument> CommandAsync(string action, string? station = null, string? id = null, CancellationToken token = default)
         => RequestAsync(new { Id=id??Guid.NewGuid().ToString("N"), Action=action, StationId=station,
-            JournalFeatures=action=="status"?new[]{RecoveryCompatibility.HeldRotationFeature,RecoveryCompatibility.StationQueueFeature}:null },token);
+            JournalFeatures=action=="status"?new[]{RecoveryCompatibility.HeldRotationFeature,RecoveryCompatibility.StationQueueFeature,
+                RecoveryCompatibility.ProgrammeAutomationFeature,RecoveryCompatibility.CrossfadeFeature}:null },token);
 
     internal async Task<JsonDocument> RequestAsync(object request, CancellationToken token = default)
     {

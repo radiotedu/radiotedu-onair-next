@@ -685,6 +685,14 @@ async Task LifecycleAsync(CaseResult result)
             siblingStarts = b.GetProperty("Outputs")[0].GetProperty("EncoderStarts").GetInt64();
             siblingSamples = b.GetProperty("Samples").GetInt64();
         }
+        var crossfadeCommand=Guid.NewGuid().ToString("N");
+        var setCrossfade=new {Id=crossfadeCommand,Action="crossfade-save",StationId="b",Revision=0,CrossfadeSeconds=.5};
+        using(var saved=await host.RequestAsync(setCrossfade))
+            Check(result,saved.RootElement.GetProperty("accepted").GetBoolean()&&saved.RootElement.GetProperty("crossfade").GetProperty("Version").GetInt64()==1,
+                "A UI-compatible crossfade setting is saved while the station runs.");
+        using(var retry=await host.RequestAsync(setCrossfade))
+            Check(result,retry.RootElement.GetProperty("accepted").GetBoolean()&&retry.RootElement.GetProperty("crossfade").GetProperty("Version").GetInt64()==1,
+                "Retrying the same crossfade request does not apply it twice.");
         await Accepted(host, "start-station", "a", "start-a-1");
         await Accepted(host, "start-station", "a", "start-a-1");
         await host.WaitForStationAsync("a", "Running");
@@ -724,6 +732,10 @@ async Task LifecycleAsync(CaseResult result)
     await using (var restarted = new ControlHost(sdk, assembly, configuration, pipe, Path.Combine(root, "host-2")))
     {
         await restarted.WaitForStationAsync("b", "Running");
+        using(var fade=await restarted.RequestAsync(new {Id=Guid.NewGuid().ToString("N"),Action="crossfade-status",StationId="b"}))
+            Check(result,fade.RootElement.GetProperty("crossfade").GetProperty("Seconds").GetDouble()==.5&&
+                fade.RootElement.GetProperty("crossfade").GetProperty("Version").GetInt64()==1,
+                "The crossfade setting survives a host restart.");
         using (var status = await restarted.CommandAsync("status"))
         {
             var a = status.RootElement.GetProperty("stations").EnumerateArray().Single(x => x.GetProperty("Id").GetString() == "a");
