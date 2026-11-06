@@ -8,6 +8,8 @@
     let pending=[];
     try{const p=JSON.parse(localStorage.getItem('studio-programme-pending')??'[]');if(Array.isArray(p))pending=p.filter(x=>['save','archive','restore'].includes(x.action)&&typeof x.body?.Engine==='string'&&/^[a-f0-9]{32}$/.test(x.body?.Id??'')).slice(0,8);}catch{}
     const saved=()=>pending.find(p=>p.body.Engine===context().engine),usable=()=>context().fresh&&context().supported&&!!context().engine,ownEditor=()=>state.editorEngine===context().engine;
+    const publicationUI=RadioTeduProgrammePublication.create({...bridge,canWrite:()=>usable()&&!state.busy&&!context().busy&&!saved(),
+      reload:()=>{if(!state.loading)void load();else setTimeout(()=>{if(context().active)void load();},250);}});
     const date=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Istanbul',year:'numeric',month:'2-digit',day:'2-digit'}),minute=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Istanbul',hour12:false,hour:'2-digit',minute:'2-digit'});
     const when=value=>{const d=new Date(value);return date.format(d)+' '+minute.format(d);};
     function feedback(text){$('feedback').textContent=text;bridge.message(text);}
@@ -64,12 +66,12 @@
     const button=(text,fn)=>{const b=node('button',text,'button');b.type='button';b.addEventListener('click',fn);return b;};
     function card(revision){
       const d=revision.Draft,r=d.Rule,engine=context().engine,card=node('article',undefined,'programme-card');
-      card.append(node('h3',r.Name),node('p',(r.Kind==='SpecialDay'?'Special-day music':'Additional timed sweeper')+' · '+r.Stations.map(id=>context().stations.find(s=>s.id===id)?.name??id).join(', ')),node('p',r.FirstDate+' – '+r.LastDate+' · '+(r.AllDay?'All day':r.StartsAt.slice(0,5)+' – '+r.EndsAt.slice(0,5))+(r.Annual?' · Annual':'')),node('p','Version '+r.Version+' · '+(revision.Archived?'Archived':'Draft — not on air')));
+      card.append(node('h3',r.Name),node('p',(r.Kind==='SpecialDay'?'Special-day music':'Additional timed sweeper')+' · '+r.Stations.map(id=>context().stations.find(s=>s.id===id)?.name??id).join(', ')),node('p',r.FirstDate+' – '+r.LastDate+' · '+(r.AllDay?'All day':r.StartsAt.slice(0,5)+' – '+r.EndsAt.slice(0,5))+(r.Annual?' · Annual':'')),node('p','Version '+r.Version+' · '+(revision.Archived?'Archived':context().executionSupported?'Saved draft':'Draft — not on air')));
       const actions=node('div',undefined,'programme-actions');
       if(!revision.Archived)actions.append(button('Edit',async()=>{if(engine===context().engine&&await mayReplace()&&engine===context().engine&&!state.busy&&!saved()){write(d);$('name').focus();}}));
       actions.append(button('History',()=>{if(engine===context().engine)void history(revision);}));
-      if(!revision.Archived)actions.append(button('Archive',async()=>{if(!usable()||saved()||state.busy||engine!==context().engine)return;if(await confirm('Archive '+r.Name+'?','Remove this draft from previews while keeping its full history?')&&engine===context().engine)await change('archive',{Engine:engine,Id:uuid(),DraftId:r.Id,ExpectedVersion:r.Version});}));
-      card.append(actions);return card;
+      let archive=null;if(!revision.Archived){archive=button('Archive',async()=>{if(!usable()||saved()||state.busy||engine!==context().engine)return;if(await confirm('Archive '+r.Name+'?','Remove this draft from previews while keeping its full history?')&&engine===context().engine)await change('archive',{Engine:engine,Id:uuid(),DraftId:r.Id,ExpectedVersion:r.Version});});actions.append(archive);}
+      card.append(actions);if(!revision.Archived)publicationUI.attach(card,revision,archive);return card;
     }
     async function load(){
       if(!usable()||state.loading)return;const engine=context().engine,generation=++state.generation;state.loading=true;controls();
@@ -77,7 +79,7 @@
         const response=await bridge.api('/api/programme-drafts?'+new URLSearchParams({engine,archived:$('show-archived').checked,offset:state.offset}));
         if(engine!==context().engine||generation!==state.generation)return;if(response.error)throw new Error(response.error);
         const page=response.drafts;state.total=page.Total;$('count').textContent=page.Total+' drafts';
-        if($('feedback').textContent.startsWith('Connect a compatible engine')||$('feedback').textContent.startsWith('Drafts could not be loaded:'))$('feedback').textContent='Drafts loaded. Saved drafts are not on air.';
+        if($('feedback').textContent.startsWith('Connect a compatible engine')||$('feedback').textContent.startsWith('Drafts could not be loaded:'))$('feedback').textContent=context().executionSupported?'Drafts loaded. Review each schedule status below.':'Drafts loaded. Saved drafts are not on air.';
         if(page.Total>0&&state.offset>=page.Total){state.offset=0;state.loading=false;return await load();}
         $('list').replaceChildren(...page.Items.map(card));if(!page.Items.length)$('list').append(node('p','No saved drafts in this view. Create an event to begin.','programme-empty'));
       }catch(error){if(engine===context().engine&&generation===state.generation)feedback('Drafts could not be loaded: '+error.message);}
@@ -145,6 +147,6 @@
     function closeContextDialogs(){++state.folderGeneration;++state.historyGeneration;state.folder=null;state.history=null;for(const id of ['folder-dialog','history','confirm'])if($(id).open)$(id).close('cancel');}
     $('preview-from').value=date.format(new Date())+'T00:00';
     window.addEventListener('pagehide',saveLocal);
-    return {update(){const c=context(),ready=c.active&&usable();if(c.active&&state.engine!==c.engine){closeContextDialogs();state.engine=c.engine;state.ready=false;state.offset=0;state.total=0;invalidatePreview();++state.generation;state.loading=false;$('list').replaceChildren(node('p','Load drafts from the selected engine.','programme-empty'));$('preview-results').replaceChildren();}if(ready&&!state.ready){state.ready=true;if((state.editorEngine!==c.engine&&!(state.dirty&&state.localError))||(!state.dirty&&state.version===0))restoreLocal();void load();}else if(!ready)state.ready=false;controls();}};
+    return {update(){const c=context(),ready=c.active&&usable();if(c.active&&state.engine!==c.engine){closeContextDialogs();state.engine=c.engine;state.ready=false;state.offset=0;state.total=0;invalidatePreview();++state.generation;state.loading=false;$('list').replaceChildren(node('p','Load drafts from the selected engine.','programme-empty'));$('preview-results').replaceChildren();}if(ready&&!state.ready){state.ready=true;if((state.editorEngine!==c.engine&&!(state.dirty&&state.localError))||(!state.dirty&&state.version===0))restoreLocal();void load();}else if(!ready)state.ready=false;publicationUI.update();controls();}};
   }};
 })();

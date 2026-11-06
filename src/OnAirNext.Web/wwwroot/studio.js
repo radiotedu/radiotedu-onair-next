@@ -774,7 +774,7 @@
   });
   document.querySelector('[aria-label="Private audition"]').addEventListener('click',()=>cueUI.show());cueUI.update();
   programmeUI=RadioTeduProgrammes.create({api,message,
-    context:()=>({engine:state.engine,station:state.station,stations:state.stations.map(s=>({id:s.Id,name:stationName(s.Id)})),fresh:fresh(),busy:state.busy,supported:state.controller?.capabilities?.includes('programme-drafts-v1')===true,active:state.page==='schedule'}),
+    context:()=>({engine:state.engine,station:state.station,stations:state.stations.map(s=>({id:s.Id,name:stationName(s.Id)})),fresh:fresh(),busy:state.busy,supported:state.controller?.capabilities?.includes('programme-drafts-v1')===true,executionSupported:state.controller?.capabilities?.includes('programme-execution-v1')===true,active:state.page==='schedule'}),
     claim:()=>{if(!fresh()||state.busy||pending())return false;state.busy=true;renderStatus();return true;},
     release:()=>{state.busy=false;renderStatus();}
   });
