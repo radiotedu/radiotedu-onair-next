@@ -199,8 +199,8 @@
     $('meter-history').disabled=!connected;
   }
   async function pollProgrammeMeter(){
-    if(state.meterPolling||state.consoleClosed||document.hidden||state.page!=='air'||!fresh()||current()?.State!=='Running'||!$('channel-inspector').offsetParent)return;
-    const engine=state.engine,station=state.station;state.meterPolling=true;
+    if(state.meterPolling||state.polling||state.consoleClosed||document.hidden||state.page!=='air'||!fresh()||current()?.State!=='Running'||!$('channel-inspector').offsetParent||Date.now()-(state.meterLastAttempt??0)<1000)return;
+    const engine=state.engine,station=state.station;state.meterPolling=true;state.meterLastAttempt=Date.now();
     try{const result=await api('/api/loudness?engine='+encodeURIComponent(engine)+'&station='+encodeURIComponent(station),{timeout:1200});
       if(engine===state.engine&&station===state.station&&result.station===station)state.meter={engine,station,snapshot:result.meter};}
     catch{}finally{state.meterPolling=false;renderProgrammeMeter();}
@@ -236,7 +236,7 @@
   async function poll(){
     if(state.polling||!state.engine||document.hidden)return;state.polling=true;const engine=state.engine;
     try{const result=await api('/api/status?engine='+encodeURIComponent(engine));if(engine!==state.engine)return;const previous=state.stations.map(s=>s.Id).join(',');state.stations=result.stations??[];state.controller=result.controller??null;outputProfile=result.commissioning??null;state.sampleAt=Date.now();if(!state.stations.some(s=>s.Id===state.station)&&state.stations.length)state.station=state.stations[0].Id;if(previous!==state.stations.map(s=>s.Id).join(','))stationTabs();text('audit-pending',String(result.audit?.PendingEvents??'—'));text('audit-rejected',String(result.audit?.RejectedEvents??'—'));text('audit-error',result.audit?.Error??'None reported');}
-    catch(error){message('Status unavailable: '+error.message);state.sampleAt=0;}
+    catch(error){message('Status unavailable: '+error.message);}
     finally{state.polling=false;renderStatus();renderOutputs();void loadQueue();if(state.page==='reports')void loadReports();if(state.page==='system')void loadMigration();}
   }
   async function command(action,payload={},retry=null){
