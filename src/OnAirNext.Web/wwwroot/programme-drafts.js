@@ -76,6 +76,7 @@
         const response=await bridge.api('/api/programme-drafts?'+new URLSearchParams({engine,archived:$('show-archived').checked,offset:state.offset}));
         if(engine!==context().engine||generation!==state.generation)return;if(response.error)throw new Error(response.error);
         const page=response.drafts;state.total=page.Total;$('count').textContent=page.Total+' drafts';
+        if($('feedback').textContent.startsWith('Connect a compatible engine')||$('feedback').textContent.startsWith('Drafts could not be loaded:'))$('feedback').textContent='Drafts loaded. Saved drafts are not on air.';
         if(page.Total>0&&state.offset>=page.Total){state.offset=0;state.loading=false;return await load();}
         $('list').replaceChildren(...page.Items.map(card));if(!page.Items.length)$('list').append(node('p','No saved drafts in this view. Create an event to begin.','programme-empty'));
       }catch(error){if(engine===context().engine&&generation===state.generation)feedback('Drafts could not be loaded: '+error.message);}
