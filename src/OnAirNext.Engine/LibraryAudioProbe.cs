@@ -47,12 +47,26 @@ public sealed class LibraryAudioProbe(string ffmpeg) : IAsyncDisposable
         var fallback = Path.GetFileNameWithoutExtension(path);
         var suffix = fallback.LastIndexOf("--", StringComparison.Ordinal);
         if (suffix >= 0 && fallback.Length - suffix == 66 && fallback[(suffix + 2)..].All(char.IsAsciiHexDigit)) fallback = fallback[..suffix];
-        return new(Clean(Read(tags, "artist"), 128), Clean(Read(tags, "title"), 256) is { Length: > 0 } title
+        return new(Clean(ReadTag(tags, "artist"), 128), Clean(ReadTag(tags, "title"), 256) is { Length: > 0 } title
             ? title : Clean(fallback, 256), seconds, loudness);
     }
 
     private static string Read(JsonElement value, string property) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(property, out var item)
         && item.ValueKind == JsonValueKind.String ? item.GetString() ?? "" : "";
+    internal static string ReadTag(JsonElement tags, string name)
+    {
+        if (tags.ValueKind != JsonValueKind.Object) return "";
+        string? found = null;
+        foreach (var property in tags.EnumerateObject())
+        {
+            if (!property.Name.Equals(name, StringComparison.OrdinalIgnoreCase) || property.Value.ValueKind != JsonValueKind.String) continue;
+            var candidate = property.Value.GetString();
+            if (string.IsNullOrWhiteSpace(candidate)) continue;
+            if (found is not null && !string.Equals(found, candidate, StringComparison.Ordinal)) return "";
+            found = candidate;
+        }
+        return found ?? "";
+    }
     private static string Clean(string value, int limit) => new(value.Where(c => !char.IsControl(c)).Take(limit).ToArray());
 
     private sealed record CaptureResult(string Output, string Diagnostic);
