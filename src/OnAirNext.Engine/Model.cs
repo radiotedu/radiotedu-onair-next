@@ -190,7 +190,8 @@ public sealed record PlaybackEvent(string EventId, string OccurrenceId, string S
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ScheduledOccurrenceKey = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ProgrammeMusicKey = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? ProgrammeMusicPosition = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool SuppressStationBranding = false);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool SuppressStationBranding = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? OverlapWithOccurrenceId = null);
 public sealed record PlayoutSelection(MediaItem Item, string? QueueEntryId = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HoldsRotation = false,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreviousOccurrenceId = null,

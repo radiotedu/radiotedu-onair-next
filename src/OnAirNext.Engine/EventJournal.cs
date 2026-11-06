@@ -94,6 +94,8 @@ public sealed partial class EventJournal : IAsyncDisposable
                 CREATE TABLE IF NOT EXISTS cadence_completions(station_id TEXT NOT NULL,occurrence_id TEXT NOT NULL,
                   PRIMARY KEY(station_id,occurrence_id));
                 CREATE TABLE IF NOT EXISTS playout_checkpoints(station_id TEXT PRIMARY KEY,payload TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS playout_overlaps(station_id TEXT NOT NULL,outgoing_occurrence TEXT NOT NULL,incoming_occurrence TEXT NOT NULL,
+                  PRIMARY KEY(station_id,outgoing_occurrence));
                 CREATE TABLE IF NOT EXISTS engine_commands(id TEXT PRIMARY KEY,station_id TEXT NOT NULL,kind TEXT NOT NULL,processed INTEGER NOT NULL DEFAULT 0);
                 CREATE TABLE IF NOT EXISTS programme_measurements(sequence INTEGER PRIMARY KEY,
                   window_id TEXT NOT NULL,station_id TEXT NOT NULL,end_sample INTEGER NOT NULL,phase TEXT NOT NULL,
@@ -179,6 +181,7 @@ public sealed partial class EventJournal : IAsyncDisposable
             RecordBrandingAttempt(connection, transaction, entry);
             RecordScheduledAttempt(connection, transaction, entry);
             RecordProgrammeMusicAttempt(connection, transaction, entry);
+            RecordCrossfadeOwnership(connection, transaction, entry);
             if (entry.Type == "ended" && (entry.ProgrammeMusicKey is null || !entry.SuppressStationBranding)) CompleteCadence(connection, transaction, entry);
             if (entry.Type is "skipped" or "ended" or "failed" or "decode_failed")
                 ConsumeSkips(connection, transaction, entry.StationId, entry.OccurrenceId);

@@ -157,6 +157,7 @@ public sealed partial class EventJournal
                 saved.ScheduledOccurrenceKey is not null || saved.ProgrammeMusicPosition is < 0 or long.MaxValue)) ||
             (saved.Announced && (saved.Item is null || string.IsNullOrWhiteSpace(saved.OccurrenceId))))
             throw new InvalidDataException("The playout checkpoint is inconsistent. Recovery requires inspection.");
+        RecoverCrossfadeOwnership(connection, transaction, stationId, saved);
         RecoverOtherProgrammeMusicAttempts(connection, transaction, stationId,
             saved.State == "Playing" && saved.Announced ? saved.OccurrenceId : null, saved);
         RecoverOtherQueueAttempts(connection, transaction, stationId,
