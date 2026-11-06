@@ -97,7 +97,7 @@ foreach (var name in scenario == "all" ? new[] { "baseline", "precision", "norma
             case "corrupt": await CorruptAsync(result); break;
             case "host": await HostAsync(result); break;
             case "precision": await PrecisionAsync(result); break;
-            case "processing": await ProcessingChecks.RunAsync(ffmpeg,Path.Combine(runRoot,result.Name),result); break;
+            case "processing": await ProcessingChecks.RunAsync(ffmpeg,icecastRoot,Path.Combine(runRoot,result.Name),result); break;
             case "roster18": await Roster18Checks.RunAsync(ffmpeg,icecastRoot,Path.Combine(runRoot,result.Name),result); break;
             case "normalization": await NormalizationChecks.RunAsync(ffmpeg,icecastRoot,Path.Combine(runRoot,result.Name),result); break;
             case "queue": await QueueChecks.RunAsync(ffmpeg,icecastRoot,Path.Combine(runRoot,result.Name),result); break;

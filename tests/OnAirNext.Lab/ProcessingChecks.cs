@@ -6,7 +6,7 @@ namespace OnAirNext.Lab;
 internal static partial class ProcessingChecks
 {
     private static void Check(CaseResult result,bool ok,string text){result.Checks.Add(new{Passed=ok,Description=text});if(!ok)throw new InvalidDataException(text);}
-    public static async Task RunAsync(string ffmpeg,string root,CaseResult result)
+    public static async Task RunAsync(string ffmpeg,string icecastRoot,string root,CaseResult result)
     {
         Directory.CreateDirectory(root);
         var a=Fixture(root,"a",1200,0.03f);var b=Fixture(root,"b",480,0.03f,ContentKind.Advertisement);var c=Fixture(root,"c",480,0.03f,ContentKind.Sweeper);
@@ -19,6 +19,7 @@ internal static partial class ProcessingChecks
         await BrandingChecksAsync(ffmpeg,root,result);
         await PrivateCueChecksAsync(ffmpeg,root,result);
         await ProgrammeChecksAsync(ffmpeg,root,result);
+        await ProgrammeLoopbackChecksAsync(ffmpeg,icecastRoot,root,result);
         Check(result,ChildProcess.ActiveProcesses.Count==0,"Processing qualification closes every owned decoder/validation worker.");
         result.Details["scope"]="Synthetic final-mix limiting, prepared/audible EOF, automatic branding PCM/order, private cue isolation, timed programme PCM transitions, Stop/Skip/recovery ownership, and bounded asynchronous audit only. No physical audio output, browser/mouse cue, mic/recording, encoded worst-case headroom, HE-AAC/all18 or production acceptance.";
     }
