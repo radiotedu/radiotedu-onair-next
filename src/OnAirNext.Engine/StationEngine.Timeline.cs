@@ -4,7 +4,7 @@ public sealed partial class StationEngine
 {
     private const int MaximumPreparedEntries=8192,MaximumAuditTickets=1024;
     private sealed record Cursor(int RotationIndex,PlayoutSelection Selection,string Occurrence,string? PreviousOccurrence,long ItemSamples);
-    private sealed record Slice(long Start,long End,Cursor Cursor);
+    private sealed record Slice(long Start,long End,Cursor Cursor,bool Dominant=true);
     private sealed record Boundary(string Type,long Position,string Detail,Cursor Cursor,PlayoutCheckpoint Checkpoint);
     private sealed record AuditTicket(Task Commit,string? ReleaseQueueEntry);
     private readonly Queue<Slice> _slices=new();
@@ -31,22 +31,27 @@ public sealed partial class StationEngine
             if (source?.Selection.QueueEntryId is { } id) retained.Add(id);
         _planner.RetainQueueReservations(retained);
     }
-    private void AddSlice(long start,long end,Cursor cursor)
+    private void AddSlice(long start,long end,Cursor cursor,bool dominant=true)
     {
         if(_slices.Count>=MaximumPreparedEntries)throw new InvalidOperationException("Prepared programme ownership exceeded its bounded window.");
-        _slices.Enqueue(new(start,end,cursor));
+        _slices.Enqueue(new(start,end,cursor,dominant));
     }
     private void PrepareBoundary(string type,long position,string detail="")
     {
         if(_boundaries.Count>=MaximumPreparedEntries)throw new InvalidOperationException("Prepared event ownership exceeded its bounded window.");
         var between=type is "ended" or "skipped" or "failed" or "decode_failed" or "queue_deferred";
         var cursor=PreparedCursor();
-        _preparedBranding=_preparedBranding.Project(cursor.Selection.Item.Kind,type);
         var checkpoint=new PlayoutCheckpoint(_settings.Id,between?"BetweenItems":"Playing",
             _index+(between&&_selection?.AdvancesRotation==true?1:0),between?null:_selection?.Item,_occurrence,
             between?0:_itemSamples,position,!between&&_announced,default,between?null:_selection?.QueueEntryId,_sessionId,_previousOccurrence,
             !between&&_selection?.HoldsRotation==true,between?null:_selection?.ScheduledOccurrenceKey,
             between?null:_selection?.ProgrammeMusicKey,between?null:_selection?.ProgrammeMusicPosition);
+        PrepareBoundaryFor(type,position,detail,cursor,checkpoint);
+    }
+    private void PrepareBoundaryFor(string type,long position,string detail,Cursor cursor,PlayoutCheckpoint checkpoint)
+    {
+        if(_boundaries.Count>=MaximumPreparedEntries)throw new InvalidOperationException("Prepared event ownership exceeded its bounded window.");
+        _preparedBranding=_preparedBranding.Project(cursor.Selection.Item.Kind,type);
         _boundaries.Enqueue(new(type,position,detail,cursor,checkpoint));
     }
     // Start at the end of the published span is still unheard. Terminal at that end belongs to the published span.
@@ -84,7 +89,7 @@ public sealed partial class StationEngine
         Cursor? atEnd=null;
         while(_slices.TryPeek(out var slice)&&slice.Start<end)
         {
-            atEnd=slice.Cursor with{ItemSamples=slice.Cursor.ItemSamples+Math.Min(end,slice.End)-slice.Start};
+            if(slice.Dominant)atEnd=slice.Cursor with{ItemSamples=slice.Cursor.ItemSamples+Math.Min(end,slice.End)-slice.Start};
             if(slice.End>end)break;_slices.Dequeue();
         }
         if(atEnd is not null&&Volatile.Read(ref _audible)?.Occurrence==atEnd.Occurrence)Volatile.Write(ref _audible,atEnd);
@@ -93,7 +98,7 @@ public sealed partial class StationEngine
     private void UpdateVisibleNext()
     {
         var occurrence=Volatile.Read(ref _audible)?.Occurrence;
-        var next=_slices.FirstOrDefault(x=>x.Cursor.Occurrence!=occurrence)?.Cursor.Selection;
+        var next=_slices.FirstOrDefault(x=>x.Dominant&&x.Cursor.Occurrence!=occurrence)?.Cursor.Selection;
         if(next is null&&_selection is not null&&_occurrence!=occurrence)next=_selection;
         next??=_nextSource?.Selection;
         Volatile.Write(ref _visibleNextSelection,next);
