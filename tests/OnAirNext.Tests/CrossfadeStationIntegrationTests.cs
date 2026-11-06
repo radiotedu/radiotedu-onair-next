@@ -10,9 +10,9 @@ public sealed class CrossfadeRealtimeCollection { }
 [Collection("Crossfade realtime playback")]
 public sealed class CrossfadeStationIntegrationTests
 {
-    private sealed class Decoder(float sample,Task? gate=null):IFrameDecoder
+    private sealed class Decoder(float sample,Task? gate=null,int blocks=200):IFrameDecoder
     {
-        private int _remaining=200;
+        private int _remaining=blocks;
         public Task Ready=>Task.CompletedTask;
         public async ValueTask<PcmBlock?> ReadAsync(CancellationToken token)
         {
@@ -76,5 +76,19 @@ public sealed class CrossfadeStationIntegrationTests
         Assert.True(output.Left.All(x=>x>.05f));
         if(!delayIncoming)Assert.InRange(output.Left[180000],.20f,.23f);
         Assert.True(EventJournal.Verify(db));
+    }
+
+    [Fact]
+    public async Task AnOutgoingFileThatEndsEarlyKeepsThePreparedIncomingMusicOnAir()
+    {
+        var db=Database();await using var journal=new EventJournal(db);var output=new Output();var songs=new[]{Song("a"),Song("b")};
+        await using var station=new StationEngine("unused",new("station",songs,[],Repeat:false,CrossfadeSeconds:.5),journal,[output],null,null,
+            item=>new Decoder(item.Id=="a"?.1f:.2f,blocks:item.Id=="a"?185:200),()=>Task.CompletedTask);
+        await station.StartAsync();await station.Completion.WaitAsync(TimeSpan.FromSeconds(18));
+        var events=EventJournal.ReadEvents(db);
+        Assert.Single(events,e=>e.ItemId=="a"&&e.Type=="failed");
+        Assert.Single(events,e=>e.ItemId=="b"&&e.Type=="ended");
+        Assert.Equal(360000,output.Frames);Assert.Equal(1,output.Starts);
+        Assert.True(output.Left.All(x=>x>.05f));Assert.True(EventJournal.Verify(db));
     }
 }

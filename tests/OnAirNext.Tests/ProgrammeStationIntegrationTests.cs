@@ -57,8 +57,15 @@ public sealed class ProgrammeStationIntegrationTests
         return Task.FromResult(new AudioMetadata("Special artist", Path.GetFileNameWithoutExtension(path), 87,
             new SourceLoudness(new string('A', 64), file.Length, file.LastWriteTimeUtc.Ticks, 87, -23, -3, 4, DateTimeOffset.UtcNow)));
     }
+    private static Task<AudioMetadata> MeasuredProbe(string path, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();var file=new FileInfo(path);
+        return Task.FromResult(new AudioMetadata("Special artist",Path.GetFileNameWithoutExtension(path),2.2,
+            new SourceLoudness(new string('A',64),file.Length,file.LastWriteTimeUtc.Ticks,2.2,-23,-3,4,DateTimeOffset.UtcNow,
+                PlaybackRange:new(0,105600,105600))));
+    }
     private static async Task<(ProgrammeRuntimeCoordinator Runtime, ProgrammeDraft Draft)> Prepare(
-        EventJournal journal, string folder, Clock clock, bool allDay)
+        EventJournal journal, string folder, Clock clock, bool allDay, bool measured=false)
     {
         var known = new HashSet<string>(["4"], StringComparer.Ordinal); var date = new DateOnly(2026, 11, 10);
         var draft = new ProgrammeDraft(new(Id(), 1, "10 November", ["4"], CalendarRuleKind.SpecialDay,
@@ -68,7 +75,8 @@ public sealed class ProgrammeStationIntegrationTests
         await journal.InitializeDesiredStateAsync(new("4", [], [], AutoStart: false));
         await journal.InitializeProgrammeDraftsAsync(); await journal.InitializeProgrammePublicationsAsync(); await journal.InitializeProgrammePlaybackAsync();
         await journal.SaveProgrammeDraftAsync(draft, 0, Id(), "operator", known);
-        await using var media = new ProgrammeMediaPreparation(Probe);
+        Func<string,CancellationToken,Task<AudioMetadata>> probe=measured?MeasuredProbe:Probe;
+        await using var media = new ProgrammeMediaPreparation(probe);
         await journal.PublishPreparedProgrammeAsync(await media.PrepareAsync(draft, known), 0, Id(), "operator", known);
         var runtime = new ProgrammeRuntimeCoordinator(journal, known, clock); await runtime.RefreshAsync();
         Assert.True(runtime.Snapshot().Healthy); return (runtime, draft);
@@ -152,6 +160,35 @@ public sealed class ProgrammeStationIntegrationTests
             var ended=Assert.Single(events,e=>e.Type=="ended"&&e.ItemId==prepared.Items[0].Id);
             Assert.Equal(300L*960,ended.SamplePosition-started.SamplePosition);
             Assert.Equal("Running",station.Snapshot().State);Assert.Equal(1,output.Starts);
+        }
+    }
+
+    [Fact]
+    public async Task AReadyMusicOverlapDoesNotDelayTheTimedRecordingDeadline()
+    {
+        var root=Folder();var music=Path.Combine(root,"music");var timed=Path.Combine(root,"timed");
+        Directory.CreateDirectory(music);Directory.CreateDirectory(timed);
+        await File.WriteAllTextAsync(Path.Combine(music,"a.opus"),"a");await File.WriteAllTextAsync(Path.Combine(music,"b.opus"),"b");
+        await File.WriteAllTextAsync(Path.Combine(timed,"recording.opus"),"recording");
+        await using var journal=new EventJournal(Path.Combine(root,"playback.db"));
+        var clock=new Clock(Local(10,9,4,58));var (runtime,_)=await Prepare(journal,music,clock,allDay:true,measured:true);
+        await using(runtime)
+        {
+            var known=new HashSet<string>(["4"],StringComparer.Ordinal);var day=new DateOnly(2026,11,10);
+            var draft=new ProgrammeDraft(new(Id(),1,"09:05 recording",["4"],CalendarRuleKind.TimedSweeper,
+                day,day,new TimeOnly(9,5),new TimeOnly(9,6),StartPolicy:CalendarStartPolicy.FadeAtTime),timed,SourceFile:"recording.opus");
+            await journal.SaveProgrammeDraftAsync(draft,0,Id(),"operator",known);await using var preparation=new ProgrammeMediaPreparation(Probe);
+            var prepared=await preparation.PrepareAsync(draft,known);
+            await journal.PublishPreparedProgrammeAsync(prepared,0,Id(),"operator",known);await runtime.RefreshAsync();
+            var output=new Output();var normal=new MediaItem("normal","normal.opus","Normal","Normal");
+            await using var station=new StationEngine("unused",new("4",[normal],[],Repeat:true,CrossfadeSeconds:.5),journal,[output],null,null,
+                _=>new Decoder(1000,.2f),()=>Task.CompletedTask,runtime,()=>clock.GetUtcNow());
+            await station.StartAsync();await Until(()=>station.Snapshot().CurrentAssetId==prepared.Items[0].Id);
+            await Until(()=>EventJournal.ReadEvents(journal.DatabasePath).Any(e=>e.Type=="started"&&e.ItemId==prepared.Items[0].Id));
+            var events=EventJournal.ReadEvents(journal.DatabasePath);var timedStart=Assert.Single(events,e=>e.Type=="started"&&e.ItemId==prepared.Items[0].Id);
+            Assert.InRange(timedStart.SamplePosition,2L*48000-960,2L*48000+960);
+            Assert.Single(events,e=>e.Type=="started"&&e.ProgrammeMusicKey is not null);
+            Assert.Equal(1,output.Starts);
         }
     }
 
