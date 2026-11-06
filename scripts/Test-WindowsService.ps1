@@ -146,8 +146,16 @@ try{
 
  Check 'Start intent is durably acknowledged' ((Probe 'start-station').accepted -eq $true)
  $null=Ready $true;$oldChildren=Children
+ $oldService=Get-CimInstance -ClassName Win32_Service -Filter ("Name='"+$serviceName+"'")
+ $oldHost=OwnProcess $oldService.ProcessId $hostExe 0
  Stop-Service -Name $serviceName;Stopped
+ Check 'Stopped service process exits before an image swap' ($oldHost.WaitForExit(10000));$oldHost.Dispose()
  foreach($child in $oldChildren){Check 'Graceful service exit releases owned descendants' ($child.WaitForExit(10000));$child.Dispose()}
+ $movedBin=Join-Path $installRoot 'bin-stopped-move-probe'
+ if(Test-Path -LiteralPath $movedBin){throw 'Unexpected isolated image move target'}
+ Move-Item -LiteralPath $bin -Destination $movedBin
+ try{Check 'Stopped owned service image can be moved after descendants exit' (Test-Path -LiteralPath $movedBin)}
+ finally{Move-Item -LiteralPath $movedBin -Destination $bin}
  ClearMarker;Start-Service -Name $serviceName;$null=Ready $true
  Check 'SCM stop preserves requested-running intent' $true
  $children=Children;$service=Get-CimInstance -ClassName Win32_Service -Filter ("Name='"+$serviceName+"'")
