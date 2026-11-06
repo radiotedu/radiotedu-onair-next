@@ -13,7 +13,7 @@ public sealed partial class EventJournal
     {
         if(string.IsNullOrWhiteSpace(station)||station.Length>64||station.Any(char.IsControl))throw new ArgumentException("Choose a station.");
         ValidateCrossfadeSeconds(initialSeconds);
-        return TransactionAsync((c,t)=>
+        return TransactionAsync<CrossfadeConfiguration>((c,t)=>
         {
             using var create=PublicationCommand(c,t,"""
                 CREATE TABLE IF NOT EXISTS station_crossfade(station_id TEXT PRIMARY KEY,version INTEGER NOT NULL,seconds REAL NOT NULL);
@@ -28,7 +28,7 @@ public sealed partial class EventJournal
         if(string.IsNullOrWhiteSpace(station)||station.Length>64||station.Any(char.IsControl)||expectedVersion is <0 or long.MaxValue||
             !Guid.TryParse(command,out var parsed))throw new ArgumentException("Review the station and current crossfade version.");
         ValidateCrossfadeSeconds(seconds);var key=parsed.ToString("N");
-        return TransactionAsync((c,t)=>
+        return TransactionAsync<CrossfadeConfiguration>((c,t)=>
         {
             using(var prior=PublicationCommand(c,t,"SELECT station_id,expected_version,seconds,result_version FROM station_crossfade_commands WHERE id=$id",("$id",key)))
             using(var reader=prior.ExecuteReader())if(reader.Read())
