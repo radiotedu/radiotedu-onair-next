@@ -91,4 +91,20 @@ public sealed class CrossfadeStationIntegrationTests
         Assert.Equal(360000,output.Frames);Assert.Equal(1,output.Starts);
         Assert.True(output.Left.All(x=>x>.05f));Assert.True(EventJournal.Verify(db));
     }
+
+    [Fact]
+    public async Task SavingATransitionDuringPlaybackAppliesToTheNextSongWithoutReopeningOutput()
+    {
+        var db=Database();await using var journal=new EventJournal(db);var output=new Output();var songs=new[]{Song("a"),Song("b")};
+        var spec=new StationSettings("station",songs,[],Repeat:false);var profiles=new StationCrossfades(journal,[spec]);await profiles.InitializeAsync();
+        await using var station=new StationEngine("unused",spec,journal,[output],null,null,
+            item=>new Decoder(item.Id=="a"?.1f:.2f),()=>Task.CompletedTask,crossfade:profiles.Source("station"));
+        await station.StartAsync();using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(12));
+        while(output.Frames<48000)await Task.Delay(20,timeout.Token);
+        var saved=await profiles.SaveAsync("station",0,.5,Guid.NewGuid().ToString("N"));Assert.Equal(1,saved.Version);
+        await station.Completion.WaitAsync(TimeSpan.FromSeconds(18));
+        var starts=EventJournal.ReadEvents(db).Where(e=>e.Type=="started").ToArray();
+        Assert.Equal(2,starts.Length);Assert.Equal(168000,starts[1].SamplePosition);
+        Assert.Equal(1,output.Starts);Assert.Equal(360000,output.Frames);Assert.True(output.Left.All(x=>x>.05f));
+    }
 }

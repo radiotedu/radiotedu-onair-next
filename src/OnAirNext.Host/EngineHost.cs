@@ -76,6 +76,7 @@ internal static class EngineHost
         await using var library = new StationLibrary(journal, config.Ffmpeg, config.DataRoot, libraryInventories,contentKinds:brandingKinds);
         using var branding = new StationBranding(journal,library,brandingStations);
         using var queues = new StationQueues(journal,library,brandingStations);
+        var crossfades = new StationCrossfades(journal,config.Stations);
         await using var programmes = new ProgrammeRuntimeCoordinator(journal,config.Stations.Select(station=>station.Id));
         await using var programmeControl = new ProgrammePublicationControl(journal,new ProgrammeMediaPreparation(config.Ffmpeg),config.Stations.Select(station=>station.Id));
         programmeControl.Changed += () =>
@@ -87,7 +88,7 @@ internal static class EngineHost
         await using var coordinator = new StationCoordinator(config.Ffmpeg, config.Stations, journal,
             settings => new StationEngine(config.Ffmpeg, settings, journal,
                 outputs: config.Commissioning ? settings.Outputs.Select(output => (IProgramOutput)new IcecastOutput(config.Ffmpeg, output, LegacyServiceFence.ForOutput(output))).ToArray() : null,
-                planner: queues.Planner(settings), branding:settings.Repeat?branding.Source(settings.Id):null,programmes:programmes),
+                planner: queues.Planner(settings), branding:settings.Repeat?branding.Source(settings.Id):null,programmes:programmes,crossfade:crossfades.Source(settings.Id)),
             commissionedService: config.Commissioning);
         await using var sourceChecks = new SourceAccessChecks(async path =>
         {
@@ -109,6 +110,7 @@ internal static class EngineHost
         {
             if (serviceMode) WindowsServiceDiagnostics.Stage("library initialization");
             await branding.InitializeAsync();
+            await crossfades.InitializeAsync();
             await library.InitializeAsync();
             await journal.InitializeProgrammePlaybackAsync();
             await journal.InitializeProgrammeDraftsAsync();
@@ -172,7 +174,7 @@ internal static class EngineHost
                                         })).ToArray()
                                     } : null,
                                     controller = new { mode = serviceMode ? "windows-service" : "developer", service = serviceMode ? ServiceEndpoint.Name : null,
-                                        capabilities = new[] { "legacy-music-assignment-v1", RecoveryCompatibility.HeldRotationFeature, "branding-library-v1", "private-cue-v1", RecoveryCompatibility.StationQueueFeature, RecoveryCompatibility.ProgrammeAutomationFeature, "commissioning-output-profile-v1", "commissioning-output-roster-v1", "programme-drafts-v1", "programme-execution-v1" } } });
+                            capabilities = new[] { "legacy-music-assignment-v1", RecoveryCompatibility.HeldRotationFeature, "branding-library-v1", "private-cue-v1", RecoveryCompatibility.StationQueueFeature, RecoveryCompatibility.ProgrammeAutomationFeature, "commissioning-output-profile-v1", "commissioning-output-roster-v1", "programme-drafts-v1", "programme-execution-v1", "crossfade-settings-v1" } } });
                                 break;
                             case "commission-output-profile" when serviceMode && OperatingSystem.IsWindows() && request.OutputProfile is { } outputProfile:
                                 CommissioningOutputStore.RequireAllDisarmed(coordinator.Snapshot());
@@ -239,6 +241,10 @@ internal static class EngineHost
                                 privateCue.RequestStop(cueSession);result=JsonSerializer.Serialize(new{accepted=true,cue=privateCue.Snapshot()});break;
                             case "branding-status" when request.StationId is { } brandingStation:
                                 result=JsonSerializer.Serialize(new{branding=await branding.SnapshotAsync(brandingStation)});break;
+                            case "crossfade-status" when request.StationId is { } crossfadeStation:
+                                result=JsonSerializer.Serialize(new{crossfade=crossfades.Snapshot(crossfadeStation)});break;
+                            case "crossfade-save" when request.StationId is { } saveCrossfadeStation && request.CrossfadeSeconds is { } crossfadeSeconds:
+                                result=JsonSerializer.Serialize(new{accepted=true,crossfade=await crossfades.SaveAsync(saveCrossfadeStation,request.Revision,crossfadeSeconds,request.Id)});break;
                             case "branding-save" when request.StationId is { } saveBrandingStation && request.BrandingRules is { } brandingRules:
                                 result=JsonSerializer.Serialize(new{accepted=true,configuration=await branding.SaveAsync(saveBrandingStation,request.Revision,brandingRules,request.Id)});break;
                             case "start-station" or "stop-station" when request.StationId is { } targetStation:
@@ -376,4 +382,5 @@ internal sealed record EngineCommand(string Id, string Action, string? StationId
     long Revision = 0, long ExpectedVersion = 0, string? Artist = null, string? Title = null, string? SourceCheckId = null, string? ReportPeriod = null, string? ReportSelection = null, string? ReportId = null, string? PreviewId = null, LegacyStationMapping[]? Mappings = null, int? MappingRevision = null, string[]? JournalFeatures = null, BrandingRules? BrandingRules = null,
     QueueLibraryReference? QueueSource = null,long QueueRevision = 0,string? QueueEntryId = null,
     ProductionOutputConfiguration? OutputProfile = null, ProgrammeDraft? ProgrammeDraft = null,
-    string? DraftId = null, long SourceVersion = 0, string? PreviewFrom = null, bool IncludeArchived = false, string? ProgrammeJobId = null);
+    string? DraftId = null, long SourceVersion = 0, string? PreviewFrom = null, bool IncludeArchived = false, string? ProgrammeJobId = null,
+    double? CrossfadeSeconds = null);

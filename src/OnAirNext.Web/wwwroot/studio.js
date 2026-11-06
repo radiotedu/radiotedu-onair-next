@@ -4,7 +4,7 @@
   const roster = [{id:'1',name:'Classic'},{id:'2',name:'Lofi'},{id:'4',name:'Pop'},{id:'5',name:'Cazz'},{id:'8',name:'Rock'},{id:'9',name:'Energize'},{id:'10',name:'Situation'},{id:'11',name:'Main Character'}];
   const state = {page:'air',station:'9',engine:null,stations:[],session:null,autoConnect:true,discovering:false,sampleAt:0,polling:false,busy:false,library:null,offset:0,query:'',folder:null,folderGeneration:0,pending:[],stopTarget:null,folderTarget:null,folderSource:null,editTarget:null,assetStateTarget:null,controller:null,consoleClosed:false,upload:null,uploadSelection:null};
   const migration={engine:null,preview:null,loading:false,busy:false,key:null,selects:new Map(),pending:null,submissionError:null};
-  let brandingUI=null,cueUI=null,programmeUI=null;
+let brandingUI=null,cueUI=null,programmeUI=null,crossfadeUI=null;
   let outputProfile=null,outputBusy=false;
   function renderOutputs(){
     const stopped=fresh()&&state.stations.length===8&&state.stations.every(s=>s.State==='Stopped'&&!s.RequestedRunning&&s.Outputs.every(o=>o.State==='Stopped'&&!o.EncoderPid&&!o.QueuedBlocks));
@@ -69,7 +69,7 @@
     $('stations').replaceChildren(...stations.map(station=>{const button=element('button','station-tab');button.role='tab';button.setAttribute('aria-selected',String(station.id===state.station));button.setAttribute('aria-label',station.name+' channel');button.append(element('span','dot'),document.createTextNode(station.name));button.addEventListener('click',()=>selectStation(station.id));return button;}));
   }
   function selectStation(id){state.station=id;state.library=null;state.offset=0;queueState.snapshot=null;queueState.error=null;queueState.key=null;queueState.lastAttempt=0;stationTabs();renderStatus();resetLibrary();if(state.page==='library')void loadLibrary();void loadQueue(true);}
-  function navigate(page){if(!names[page])return;state.page=page;document.querySelectorAll('[data-view]').forEach(section=>section.hidden=section.dataset.view!==page);document.querySelectorAll('.nav-item[data-page]').forEach(button=>{button.classList.toggle('selected',button.dataset.page===page);button.setAttribute('aria-current',button.dataset.page===page?'page':'false');});text('breadcrumb',names[page]);if(page==='library')void loadLibrary();if(page==='system'){void loadSetup();void loadAppUpdates();void loadAudioTools();}if(page==='reports')void loadReports();brandingUI?.update();programmeUI?.update();}
+function navigate(page){if(!names[page])return;state.page=page;document.querySelectorAll('[data-view]').forEach(section=>section.hidden=section.dataset.view!==page);document.querySelectorAll('.nav-item[data-page]').forEach(button=>{button.classList.toggle('selected',button.dataset.page===page);button.setAttribute('aria-current',button.dataset.page===page?'page':'false');});text('breadcrumb',names[page]);if(page==='library')void loadLibrary();if(page==='system'){void loadSetup();void loadAppUpdates();void loadAudioTools();}if(page==='reports')void loadReports();brandingUI?.update();programmeUI?.update();crossfadeUI?.update();}
   document.querySelectorAll('[data-page]:not(:disabled)').forEach(button=>button.addEventListener('click',event=>{event.preventDefault();navigate(button.dataset.page);}));
   document.addEventListener('keydown',event=>{if(event.altKey && (event.key==='1'||event.key==='2')){event.preventDefault();navigate(event.key==='1'?'air':'library');}});
   function renderStatus(){
@@ -115,7 +115,7 @@
     $('engine-label').replaceChildren(document.createTextNode(connected?'Engine connected':'Engine not connected'),element('small','',connected?'Isolated development engine':'Existing broadcasts unchanged'));
     $('disconnect-engine').disabled=!state.engine;
     $('retry-command').hidden=!pending();$('retry-command').disabled=!connected||state.busy;
-    libraryControls();renderProgrammeMeter();brandingUI?.update();cueUI?.update();programmeUI?.update();
+  libraryControls();renderProgrammeMeter();brandingUI?.update();cueUI?.update();programmeUI?.update();crossfadeUI?.update();
   }
   function libraryControls(){
     const enabled=fresh()&&!state.busy&&!pending();$('choose-folder').disabled=!enabled;$('add-files').disabled=!enabled||!state.library?.canImportFiles;
@@ -773,6 +773,11 @@
     stream:(body,signal)=>fetch('/api/private-cue',{method:'POST',headers:{'Content-Type':'application/json','X-Studio-Token':state.session?.token??''},body:JSON.stringify(body),credentials:'same-origin',signal})
   });
   document.querySelector('[aria-label="Private audition"]').addEventListener('click',()=>cueUI.show());cueUI.update();
+  crossfadeUI=RadioTeduCrossfade.create({api,message,
+    context:()=>({engine:state.engine,station:state.station,fresh:fresh(),busy:state.busy,supported:state.controller?.capabilities?.includes('crossfade-settings-v1')===true,active:state.page==='air'}),
+    claim:()=>{if(!fresh()||state.busy||pending())return false;state.busy=true;renderStatus();return true;},
+    release:()=>{state.busy=false;renderStatus();}
+  });crossfadeUI.update();
   programmeUI=RadioTeduProgrammes.create({api,message,
     context:()=>({engine:state.engine,station:state.station,stations:state.stations.map(s=>({id:s.Id,name:stationName(s.Id)})),fresh:fresh(),busy:state.busy,supported:state.controller?.capabilities?.includes('programme-drafts-v1')===true,executionSupported:state.controller?.capabilities?.includes('programme-execution-v1')===true,active:state.page==='schedule'}),
     claim:()=>{if(!fresh()||state.busy||pending())return false;state.busy=true;renderStatus();return true;},

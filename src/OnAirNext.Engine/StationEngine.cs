@@ -43,18 +43,19 @@ public sealed partial class StationEngine : IStationSession
     private Exception? _preparationFault;
     private ProgrammeLoudnessMonitor? _loudness;
     private readonly TruePeakLimiter48k _limiter=new();
-    private readonly EqualPowerCrossfade? _crossfadeCurve;
+    private readonly CrossfadeProfile _defaultCrossfade;
+    private readonly ICrossfadeSource? _crossfadeSource;
     private LimiterSnapshot? _publishedLimiter;
     private readonly ConcurrentDictionary<string,byte> _requestedSkips=new(StringComparer.Ordinal);
     public LiveInput Live {get;}=new();
     public Task Completion=>_run??Task.CompletedTask;
 
     public StationEngine(string ffmpeg,StationSettings settings,EventJournal journal,IReadOnlyList<IProgramOutput>? outputs=null,IPlayoutPlanner? planner=null,
-        IBrandingSource? branding=null,ProgrammeRuntimeCoordinator? programmes=null,TimeProvider? clock=null)
-        : this(ffmpeg,settings,journal,outputs,planner,branding,null,null,programmes,clock is null?null:clock.GetUtcNow) { }
+        IBrandingSource? branding=null,ProgrammeRuntimeCoordinator? programmes=null,TimeProvider? clock=null,ICrossfadeSource? crossfade=null)
+        : this(ffmpeg,settings,journal,outputs,planner,branding,null,null,programmes,clock is null?null:clock.GetUtcNow,crossfade) { }
     internal StationEngine(string ffmpeg,StationSettings settings,EventJournal journal,IReadOnlyList<IProgramOutput>? outputs,IPlayoutPlanner? planner,
         IBrandingSource? branding,Func<MediaItem,IFrameDecoder>? decoderFactory,Func<Task>? validateEncoders=null,ProgrammeRuntimeCoordinator? programmes=null,
-        Func<DateTimeOffset>? utcNow=null)
+        Func<DateTimeOffset>? utcNow=null,ICrossfadeSource? crossfade=null)
     {
         if(string.IsNullOrWhiteSpace(settings.Id))throw new ArgumentException("Station ID is required.");
         if(settings.Playlist.Count==0&&planner is null)throw new ArgumentException("An approved nonempty playlist is required.");
@@ -62,13 +63,16 @@ public sealed partial class StationEngine : IStationSession
         if(settings.Outputs.Select(x=>(x.Host,x.Port,x.Mount)).Distinct().Count()!=settings.Outputs.Count)throw new ArgumentException("Duplicate source ownership is prohibited.");
         if(!double.IsFinite(settings.CrossfadeSeconds)||settings.CrossfadeSeconds<0||settings.CrossfadeSeconds>15||
             settings.CrossfadeSeconds>0&&settings.CrossfadeSeconds<.5)throw new ArgumentException("Crossfade must be disabled or between 0.5 and 15 seconds.");
-        if(settings.CrossfadeSeconds>0)_crossfadeCurve=new(checked((int)Math.Round(settings.CrossfadeSeconds*AudioFormat.SampleRate,MidpointRounding.AwayFromZero)));
+        _defaultCrossfade=new(new(settings.Id,0,settings.CrossfadeSeconds),settings.CrossfadeSeconds==0?null:
+            new EqualPowerCrossfade(checked((int)Math.Round(settings.CrossfadeSeconds*AudioFormat.SampleRate,MidpointRounding.AwayFromZero))));
+        _crossfadeSource=crossfade;
         _settings=settings;_journal=journal;_planner=planner;_branding=branding;_programmes=programmes;_utcNow=utcNow??(()=>DateTimeOffset.UtcNow);
         _decoders=new(decoderFactory??(item=>new MediaDecoder(ffmpeg,item)));
         _validateEncoders=validateEncoders??(()=>EncoderCapabilities.ValidateAsync(ffmpeg,settings.Outputs));
         _outputs=outputs??settings.Outputs.Select(x=>(IProgramOutput)new IcecastOutput(ffmpeg,x)).ToArray();
         _releasedOutputs=new bool[_outputs.Count];
         if(_branding is not null)_branding.Changed+=RefreshNext;
+        if(_crossfadeSource is not null)_crossfadeSource.Changed+=RefreshNext;
     }
     public async Task StartAsync()
     {
@@ -208,6 +212,7 @@ public sealed partial class StationEngine : IStationSession
             if(_disposed)return;await _stop.CancelAsync();
             if(_run is not null){try{await _run;}catch(Exception){}}
             await ReleaseResourcesAsync();_planner?.ReleaseQueueReservations();if(_branding is not null)_branding.Changed-=RefreshNext;
+            if(_crossfadeSource is not null)_crossfadeSource.Changed-=RefreshNext;
             Live.Dispose();_stop.Dispose();_disposed=true;
         }
         finally{_disposeGate.Release();}

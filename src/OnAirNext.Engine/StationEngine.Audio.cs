@@ -5,12 +5,13 @@ namespace OnAirNext.Engine;
 public sealed partial class StationEngine
 {
     private Exception? _decoderFault;
-    private sealed class PreparedSource(PlayoutSelection selection,DecoderPreparation.Source? decoder,Exception? fault,NextPcmPrefetch? prefetch=null)
+    private sealed class PreparedSource(PlayoutSelection selection,DecoderPreparation.Source? decoder,Exception? fault,NextPcmPrefetch? prefetch=null,double prefetchSeconds=0)
     {
         public PlayoutSelection Selection {get;}=selection;
         public DecoderPreparation.Source? Decoder {get;}=decoder;
         public Exception? Fault {get;set;}=fault;
         public NextPcmPrefetch? Prefetch {get;}=prefetch;
+        public double PrefetchSeconds {get;}=prefetchSeconds;
     }
     private async ValueTask<PcmBlock?> RenderNextAsync(CancellationToken token)
     {
@@ -162,6 +163,7 @@ public sealed partial class StationEngine
 
     private ValueTask PrepareNextAsync(bool assumeCurrentCompleted=true,bool retryFault=false)
     {
+        var crossfadeSeconds=CrossfadeSettings().Configuration.Seconds;
         var normal=TrySelectNormal(NextRotationIndex);
         var programme=NextProgrammeMusic();
         var ordinary=programme??normal;
@@ -179,7 +181,8 @@ public sealed partial class StationEngine
         PreparedSource? Take(PlayoutSelection? target)
         {
             if(target is null)return null;
-            var found=retained.FirstOrDefault(x=>x.Selection==target&&(!retryFault||x.Fault is null&&x.Decoder?.Ready.IsFaulted!=true&&x.Decoder?.Ready.IsCanceled!=true));
+            var wanted=_selection?.Item.Kind==ContentKind.Music&&target.Item.Kind==ContentKind.Music?crossfadeSeconds:0;
+            var found=retained.FirstOrDefault(x=>x.Selection==target&&x.PrefetchSeconds==wanted&&(!retryFault||x.Fault is null&&x.Decoder?.Ready.IsFaulted!=true&&x.Decoder?.Ready.IsCanceled!=true));
             if(found is not null)retained.Remove(found);return found;
         }
         var nextPrepared=Take(desired);var secondPrepared=Take(second);var fallbackPrepared=Take(fallback);
@@ -191,9 +194,9 @@ public sealed partial class StationEngine
             var decoder=CreatePreparedDecoder(target,out var fault);NextPcmPrefetch? prefetch=null;
             try
             {
-                if(decoder is not null&&_settings.CrossfadeSeconds>0&&_selection?.Item.Kind==ContentKind.Music&&target.Item.Kind==ContentKind.Music)
-                    prefetch=new NextPcmPrefetch(decoder,(int)Math.Ceiling(_settings.CrossfadeSeconds*50)+10);
-                var prepared=new PreparedSource(target,decoder,fault,prefetch);created.Add(prepared);return prepared;
+                var seconds=_selection?.Item.Kind==ContentKind.Music&&target.Item.Kind==ContentKind.Music?crossfadeSeconds:0;
+                if(decoder is not null&&seconds>0)prefetch=new NextPcmPrefetch(decoder,(int)Math.Ceiling(seconds*50)+10);
+                var prepared=new PreparedSource(target,decoder,fault,prefetch,seconds);created.Add(prepared);return prepared;
             }
             catch{RetireSource(decoder,prefetch);throw;}
         }

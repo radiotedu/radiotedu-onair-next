@@ -19,14 +19,17 @@ public sealed partial class StationEngine
     private PlayoutSelection? _crossfadePlanCurrent;
     private PreparedSource? _crossfadePlanNext;
     private CrossfadeWindow? _crossfadePlan;
+    private CrossfadeProfile? _crossfadePlanProfile;
+    private CrossfadeProfile CrossfadeSettings()=>_crossfadeSource?.Snapshot()??_defaultCrossfade;
 
     private CrossfadeWindow? CurrentCrossfadePlan()
     {
-        if(_crossfadeCurve is null||_selection is null||_nextSource is null)return null;
-        if(!ReferenceEquals(_crossfadePlanCurrent,_selection)||!ReferenceEquals(_crossfadePlanNext,_nextSource))
+        var profile=CrossfadeSettings();
+        if(profile.Curve is null||_selection is null||_nextSource is null)return null;
+        if(!ReferenceEquals(_crossfadePlanCurrent,_selection)||!ReferenceEquals(_crossfadePlanNext,_nextSource)||!ReferenceEquals(_crossfadePlanProfile,profile))
         {
-            _crossfadePlanCurrent=_selection;_crossfadePlanNext=_nextSource;
-            _crossfadePlan=CrossfadeAdmission.Plan(_selection.Item,_nextSource.Selection.Item,_settings.CrossfadeSeconds);
+            _crossfadePlanCurrent=_selection;_crossfadePlanNext=_nextSource;_crossfadePlanProfile=profile;
+            _crossfadePlan=CrossfadeAdmission.Plan(_selection.Item,_nextSource.Selection.Item,profile.Configuration.Seconds);
         }
         return _crossfadePlan;
     }
@@ -48,11 +51,13 @@ public sealed partial class StationEngine
     private bool TryBeginCrossfade(CrossfadeWindow? plan,long at)
     {
         var next=_nextSource;
-        if(!_announced||_decoded is null||next?.Prefetch is null||next.Decoder?.Ready.IsCompletedSuccessfully!=true||next.Fault is not null||
+        var profile=_crossfadePlanProfile;
+        if(!_announced||_decoded is null||next?.Prefetch is null||profile?.Curve is null||!ReferenceEquals(profile,CrossfadeSettings())||
+            next.PrefetchSeconds!=profile.Configuration.Seconds||next.Decoder?.Ready.IsCompletedSuccessfully!=true||next.Fault is not null||
             !CrossfadeAdmission.CanStart(plan,_itemSamples,next.Prefetch.Snapshot(),FramesUntilProgrammeBoundary(at)))return false;
         if(next.Selection.QueueEntryId is not null&&_planner?.ResolveQueueRecovery(next.Selection) is null)return false;
         var outgoing=PreparedCursor();
-        _crossfade=new(outgoing,_decoder,_currentPrefetch,_decoded,_decodedOffset,_crossfadeCurve!);
+        _crossfade=new(outgoing,_decoder,_currentPrefetch,_decoded,_decodedOffset,profile.Curve);
         _decoded=null;_decodedOffset=0;_decoder=next.Decoder;_currentPrefetch=next.Prefetch;_decoderFault=null;_nextSource=null;
         if(_selection?.AdvancesRotation==true)_index++;
         _selection=next.Selection;_announced=false;_occurrence=Guid.NewGuid().ToString("N");_previousOccurrence=null;_itemSamples=0;
