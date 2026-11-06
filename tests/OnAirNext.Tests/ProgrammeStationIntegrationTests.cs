@@ -5,6 +5,7 @@ using Xunit;
 
 namespace OnAirNext.Tests;
 
+[Collection("Crossfade realtime playback")]
 public sealed class ProgrammeStationIntegrationTests
 {
     private sealed class Clock(DateTimeOffset now) : TimeProvider
@@ -146,6 +147,7 @@ public sealed class ProgrammeStationIntegrationTests
             var prepared=await preparation.PrepareAsync(draft,known);
             await journal.PublishPreparedProgrammeAsync(prepared,0,Id(),"operator",known);await runtime.RefreshAsync();
             Assert.True(runtime.Snapshot().Healthy);
+            runtime.Start();
             var output=new Output();var normal=new MediaItem("normal","normal.opus","Normal artist","Normal song");
             await using var station=new StationEngine("unused",new("4",[normal],[],Repeat:true),journal,[output],null,null,
                 item=>new Decoder(item.Id==prepared.Items[0].Id?300:1000,.2f),()=>Task.CompletedTask,runtime,()=>clock.GetUtcNow());
@@ -159,6 +161,7 @@ public sealed class ProgrammeStationIntegrationTests
             var started=Assert.Single(events,e=>e.Type=="started"&&e.ItemId==prepared.Items[0].Id);
             var ended=Assert.Single(events,e=>e.Type=="ended"&&e.ItemId==prepared.Items[0].Id);
             Assert.Equal(300L*960,ended.SamplePosition-started.SamplePosition);
+            if(station.Completion.IsFaulted)await station.Completion;
             Assert.Equal("Running",station.Snapshot().State);Assert.Equal(1,output.Starts);
         }
     }
@@ -180,6 +183,7 @@ public sealed class ProgrammeStationIntegrationTests
             await journal.SaveProgrammeDraftAsync(draft,0,Id(),"operator",known);await using var preparation=new ProgrammeMediaPreparation(Probe);
             var prepared=await preparation.PrepareAsync(draft,known);
             await journal.PublishPreparedProgrammeAsync(prepared,0,Id(),"operator",known);await runtime.RefreshAsync();
+            runtime.Start();
             var output=new Output();var normal=new MediaItem("normal","normal.opus","Normal","Normal");
             await using var station=new StationEngine("unused",new("4",[normal],[],Repeat:true,CrossfadeSeconds:.5),journal,[output],null,null,
                 _=>new Decoder(1000,.2f),()=>Task.CompletedTask,runtime,()=>clock.GetUtcNow());
