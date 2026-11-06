@@ -93,6 +93,25 @@ public sealed class ProgrammeMusicJournalTests
     }
 
     [Fact]
+    public async Task AnExpiredSpecialRecoveryKeepsTheOrdinaryRotationPosition()
+    {
+        var path = Database(); var key = Key(); var attempt = Id();
+        var song = new MediaItem("song-0", "fixture.opus", "Artist", "Song", ContentKind.Music);
+        var checkpoint = new PlayoutCheckpoint("4", "Playing", 12, song, attempt, 48000, 96000, true,
+            DateTimeOffset.UtcNow, HoldsRotation: true, ProgrammeMusicKey: key, ProgrammeMusicPosition: 0);
+        await using var journal = new EventJournal(path);
+        await journal.InitializeProgrammePlaybackAsync();
+        await journal.InitializeDesiredStateAsync(new("4", [], [], AutoStart: false));
+        await journal.AppendAsync(Event(key, 0, attempt, "started"), checkpoint);
+        await journal.PrepareRecoveryAsync("4");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => journal.DeferUnavailableProgrammeRecoveryAsync("4", "wrong"));
+        var saved = await journal.DeferUnavailableProgrammeRecoveryAsync("4", attempt);
+        Assert.Equal("BetweenItems", saved.State); Assert.Equal(12, saved.RotationIndex); Assert.Null(saved.Item);
+        Assert.Null(saved.ProgrammeMusicKey); Assert.Equal(1, (await journal.ProgrammeMusicProgressAsync(key, "4")).NextPosition);
+        Assert.Single(EventJournal.ReadEvents(path), e => e.Type == "recovery_deferred" && e.ProgrammeMusicKey == key);
+    }
+
+    [Fact]
     public async Task ADecoderFailureBeforeTheFirstSampleSkipsOnlyThatPosition()
     {
         var path = Database(); var key = Key(); var attempt = Id();

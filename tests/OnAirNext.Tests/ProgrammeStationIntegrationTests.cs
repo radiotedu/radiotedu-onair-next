@@ -117,4 +117,32 @@ public sealed class ProgrammeStationIntegrationTests
             Assert.True(output.Blocks >= 90);
         }
     }
+
+    [Fact]
+    public async Task AFailedFirstSpecialSourceLeavesNormalAudioRunningAndAdvancesToAnotherSong()
+    {
+        var root = Folder(); var media = Path.Combine(root, "music"); Directory.CreateDirectory(media);
+        await File.WriteAllTextAsync(Path.Combine(media, "special-a.opus"), "a");
+        await File.WriteAllTextAsync(Path.Combine(media, "special-b.opus"), "b");
+        await using var journal = new EventJournal(Path.Combine(root, "playback.db"));
+        var clock = new Clock(Local(9, 23, 59, 58)); var (runtime, _) = await Prepare(journal, media, clock, allDay: true);
+        await using (runtime)
+        {
+            var upcoming = runtime.Snapshot().Stations["4"].Upcoming!; var badId = upcoming.Selection.Item.Id;
+            var output = new Output(); var normal = new MediaItem("normal", "normal.opus", "Normal artist", "Normal song");
+            var settings = new StationSettings("4", [normal], [], Repeat: true);
+            await using var station = new StationEngine("unused", settings, journal, [output], null, null,
+                item => item.Id == badId ? throw new IOException("unavailable fixture") : new Decoder(1000, .2f),
+                () => Task.CompletedTask, runtime, () => clock.GetUtcNow());
+            await station.StartAsync();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            while ((await journal.ProgrammeMusicProgressAsync(upcoming.Occurrence.Key, "4")).NextPosition == 0)
+                await Task.Delay(20, timeout.Token);
+            Assert.Equal("normal", station.Snapshot().CurrentAssetId);
+            clock.Now = Local(10, 0, 0, 1); await runtime.RefreshAsync();
+            await Until(() => station.Snapshot().CurrentAssetId is { } id && id != "normal" && id != badId);
+            Assert.Equal("Running", station.Snapshot().State); Assert.Equal(1, output.Starts);
+            Assert.Single(EventJournal.ReadEvents(journal.DatabasePath), e => e.Type == "decode_failed" && e.ItemId == badId);
+        }
+    }
 }

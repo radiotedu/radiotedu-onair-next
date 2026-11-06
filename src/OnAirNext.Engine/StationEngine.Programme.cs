@@ -9,6 +9,7 @@ public sealed partial class StationEngine
     private CalendarOccurrence? _currentProgrammeWindow;
     private PreparedSource? _programmeSource;
     private ProgrammeAudioCue? _programmeCue;
+    private DateTimeOffset _programmeRetryAt;
     private (string? Window, long? Position, string? Due, string? Upcoming, bool Healthy) _lastProgrammePlan;
 
     private void RememberProgrammeInsertion(string key)
@@ -59,16 +60,42 @@ public sealed partial class StationEngine
 
     private static bool ReadyForProgramme(PreparedSource? source)
     {
-        if (source?.Decoder?.Ready.IsCompletedSuccessfully != true || source.Fault is not null) return false;
+        if (source is null || source.Decoder?.Ready.IsCompletedSuccessfully != true || source.Fault is not null) return false;
         if (source.Prefetch is not { } prefetch) return true;
         var ready = prefetch.Snapshot();
         return ready.Error is null && ready.Frames >= AudioFormat.SamplesPerBlock;
     }
 
+    private static bool FailedProgrammeSource(PreparedSource? source)
+    {
+        if (source is null) return false;
+        if (source.Fault is not null || source.Decoder is null || source.Decoder.Ready.IsFaulted || source.Decoder.Ready.IsCanceled) return true;
+        if (source.Prefetch is not { } prefetch) return false;
+        var snapshot = prefetch.Snapshot();
+        return snapshot.Error is not null || snapshot.Ended && snapshot.Frames == 0;
+    }
+
+    private void RecordUnstartedProgrammeFailure(ProgrammeAudioCue cue)
+    {
+        var selection = cue.Selection;
+        if (selection.ProgrammeMusicKey is not { } key || selection.ProgrammeMusicPosition is not { } position ||
+            _failedProgrammeTracks.Contains((key, position))) return;
+        MarkProgrammeSourceFailed(selection);
+        var item = selection.Item;
+        var failed = new PlaybackEvent(Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N"), _settings.Id,
+            "decode_failed", item.Id, item.Artist, item.Title, item.Kind, ProgrammeTime(_samples), _samples,
+            "A prepared scheduled music source failed before its first sample; ordinary playback continues.",
+            SourceGain: SourceNormalization.Decide(item.Loudness), ProgrammeMusicKey: key, ProgrammeMusicPosition: position);
+        QueueAudit(() => _journal.AppendAsync(failed, AudibleCheckpoint("Playing")));
+    }
+
     private void PrepareProgrammeCue(ProgrammeAudioCue? cue, DateTimeOffset now)
     {
         if (cue is not null && (cue.Occurrence.DueAtUtc - now > TimeSpan.FromSeconds(30) || now >= cue.Occurrence.EndsAtUtc)) cue = null;
-        if (cue is not null && _programmeCue?.Occurrence.Key == cue.Occurrence.Key && _programmeCue.Selection == cue.Selection) return;
+        if (cue is not null && _programmeCue is { } existing && existing.Occurrence.Key == cue.Occurrence.Key && existing.Selection == cue.Selection)
+        {
+            if (!FailedProgrammeSource(_programmeSource) || now < _programmeRetryAt) return;
+        }
         RetireSource(_programmeSource?.Decoder, _programmeSource?.Prefetch); _programmeSource = null; _programmeCue = null;
         if (cue is null) return;
         // Free the least urgent branding preparation before starting a timed
@@ -79,6 +106,7 @@ public sealed partial class StationEngine
         {
             if (decoder is not null) prefetch = new NextPcmPrefetch(decoder, 60);
             _programmeSource = new(cue.Selection, decoder, fault, prefetch); _programmeCue = cue;
+            _programmeRetryAt = now.AddSeconds(5);
             PublishQueueReservations();
         }
         catch { RetireSource(decoder, prefetch); throw; }
@@ -102,14 +130,16 @@ public sealed partial class StationEngine
         if (active is not null && _selection.ProgrammeMusicKey == active.Occurrence.Key) active = null;
         if (_selection.ScheduledOccurrenceKey is not null) active = null;
         if (active?.Selection.ProgrammeMusicKey is { } key && active.Selection.ProgrammeMusicPosition is { } position &&
-            _failedProgrammeTracks.Contains((key, position))) active = null;
+            _failedProgrammeTracks.Contains((key, position))) active = view.FollowingMusic;
+        if (_programmeCue is { } failedCue && now >= failedCue.Occurrence.DueAtUtc && FailedProgrammeSource(_programmeSource))
+            RecordUnstartedProgrammeFailure(failedCue);
         var candidate = due ?? active ?? view.Upcoming;
         if (candidate is not null && (_completedProgrammeInsertions.Contains(candidate.Occurrence.Key) ||
             candidate.Occurrence.Key == _selection.ScheduledOccurrenceKey || candidate.Occurrence.Key == _selection.ProgrammeMusicKey)) candidate = null;
         PrepareProgrammeCue(candidate, now);
         var decision = ProgrammeTransitionPolicy.Decide(view, now, _selection, _currentProgrammeWindow, false,
-            _completedProgrammeInsertions, cue => _programmeCue?.Occurrence.Key == cue.Occurrence.Key &&
-                _programmeCue.Selection == cue.Selection && ReadyForProgramme(_programmeSource));
+            _completedProgrammeInsertions, cue => _programmeCue is { } prepared && prepared.Occurrence.Key == cue.Occurrence.Key &&
+                prepared.Selection == cue.Selection && ReadyForProgramme(_programmeSource));
         if (decision.Kind == ProgrammeTransitionKind.Scheduled && decision.Cue is { } scheduled)
             await SwitchProgrammeSourceAsync(_programmeSource!, scheduled, view);
         else if (decision.Kind == ProgrammeTransitionKind.Ordinary &&
