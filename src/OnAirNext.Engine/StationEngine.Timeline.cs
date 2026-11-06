@@ -5,7 +5,7 @@ public sealed partial class StationEngine
     private const int MaximumPreparedEntries=8192,MaximumAuditTickets=1024;
     private sealed record Cursor(int RotationIndex,PlayoutSelection Selection,string Occurrence,string? PreviousOccurrence,long ItemSamples);
     private sealed record Slice(long Start,long End,Cursor Cursor,bool Dominant=true);
-    private sealed record Boundary(string Type,long Position,string Detail,Cursor Cursor,PlayoutCheckpoint Checkpoint);
+    private sealed record Boundary(string Type,long Position,string Detail,Cursor Cursor,PlayoutCheckpoint Checkpoint,string? OverlapWith);
     private sealed record AuditTicket(Task Commit,string? ReleaseQueueEntry);
     private readonly Queue<Slice> _slices=new();
     private readonly Queue<Boundary> _boundaries=new();
@@ -14,6 +14,7 @@ public sealed partial class StationEngine
     private Cursor? _audible;
     private PlayoutSelection? _visibleNextSelection;
     private PlayoutCheckpoint? _lastCheckpoint;
+    private string? _pendingOverlapStart;
     private int _pendingAudit;
 
     private Cursor PreparedCursor()=>new(_index,_selection!,_occurrence,_previousOccurrence,_itemSamples);
@@ -49,33 +50,35 @@ public sealed partial class StationEngine
             !between&&_selection?.HoldsRotation==true,between?null:_selection?.ScheduledOccurrenceKey,
             between?null:_selection?.ProgrammeMusicKey,between?null:_selection?.ProgrammeMusicPosition,
             !between&&_selection?.SuppressStationBranding==true);
-        PrepareBoundaryFor(type,position,detail,cursor,checkpoint);
+        var overlap=type=="started"?_pendingOverlapStart:null;
+        if(type=="started")_pendingOverlapStart=null;
+        PrepareBoundaryFor(type,position,detail,cursor,checkpoint,overlap);
     }
-    private void PrepareBoundaryFor(string type,long position,string detail,Cursor cursor,PlayoutCheckpoint checkpoint)
+    private void PrepareBoundaryFor(string type,long position,string detail,Cursor cursor,PlayoutCheckpoint checkpoint,string? overlapWith=null)
     {
         if(_boundaries.Count>=MaximumPreparedEntries)throw new InvalidOperationException("Prepared event ownership exceeded its bounded window.");
         if(cursor.Selection.ProgrammeMusicKey is null||!cursor.Selection.SuppressStationBranding)
             _preparedBranding=_preparedBranding.Project(cursor.Selection.Item.Kind,type);
-        _boundaries.Enqueue(new(type,position,detail,cursor,checkpoint));
+        _boundaries.Enqueue(new(type,position,detail,cursor,checkpoint,overlapWith));
     }
     // Start at the end of the published span is still unheard. Terminal at that end belongs to the published span.
     private void CommitBoundaries(long through,bool includeStartAtBoundary)
     {
         while(_boundaries.TryPeek(out var boundary)&&boundary.Position<=through)
         {
-            if(boundary.Type=="started"&&boundary.Position==through&&!includeStartAtBoundary)break;
+            if((boundary.Type is "started" or "resumed") && boundary.Position==through&&!includeStartAtBoundary)break;
             _boundaries.Dequeue();var cursor=boundary.Cursor;var item=cursor.Selection.Item;
             var entry=new PlaybackEvent(Guid.NewGuid().ToString("N"),cursor.Occurrence,_settings.Id,boundary.Type,
                 item.Id,item.Artist,item.Title,item.Kind,_anchor.AddSeconds((double)boundary.Position/AudioFormat.SampleRate),
                 boundary.Position,boundary.Detail,cursor.Selection.QueueEntryId,cursor.PreviousOccurrence,
                 SourceGain:SourceNormalization.Decide(item.Loudness),ScheduledOccurrenceKey:cursor.Selection.ScheduledOccurrenceKey,
                 ProgrammeMusicKey:cursor.Selection.ProgrammeMusicKey,ProgrammeMusicPosition:cursor.Selection.ProgrammeMusicPosition,
-                SuppressStationBranding:cursor.Selection.SuppressStationBranding);
+                SuppressStationBranding:cursor.Selection.SuppressStationBranding,OverlapWithOccurrenceId:boundary.OverlapWith);
             var checkpoint=boundary.Checkpoint with{SavedAtUtc=DateTimeOffset.UtcNow};
             var terminal=boundary.Type is "ended" or "skipped" or "failed" or "decode_failed" or "queue_deferred" or "interrupted";
             QueueAudit(()=>_journal.AppendAsync(entry,checkpoint),terminal?cursor.Selection.QueueEntryId:null);
             _lastCheckpoint=checkpoint;
-            if(boundary.Type=="started")
+            if(boundary.Type is "started" or "resumed")
             {
                 Volatile.Write(ref _audible,cursor);
                 PublishProgrammeMetadata(item,boundary.Position);

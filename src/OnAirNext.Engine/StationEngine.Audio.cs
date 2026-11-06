@@ -45,6 +45,7 @@ public sealed partial class StationEngine
         var offset=0;var failedAssets=0;
         while(offset<target.Length&&_selection is not null)
         {
+            if(_crossfade is not null){offset+=await FillCrossfadeAsync(target,offset,token);continue;}
             if (!_announced && _selection.QueueEntryId is not null && _planner?.ResolveQueueRecovery(_selection) is null)
             {
                 PrepareBoundary("queue_deferred",_preparedSamples+offset/AudioFormat.BytesPerSampleFrame,
@@ -90,10 +91,14 @@ public sealed partial class StationEngine
                     }
                     await AdvanceAsync();continue;
                 }
-                if(!_announced){_announced=true;PrepareBoundary("started",_preparedSamples+offset/AudioFormat.BytesPerSampleFrame);}
             }
-            var take=Math.Min(target.Length-offset,_decoded.Length-_decodedOffset);
+            if(!_announced){_announced=true;PrepareBoundary("started",_preparedSamples+offset/AudioFormat.BytesPerSampleFrame);}
             var position=_preparedSamples+offset/AudioFormat.BytesPerSampleFrame;
+            var plan=CurrentCrossfadePlan();
+            if(TryBeginCrossfade(plan,position))continue;
+            var take=Math.Min(target.Length-offset,_decoded.Length-_decodedOffset);
+            if(plan is not null&&_itemSamples<plan.StartFrame)
+                take=(int)Math.Min(take,(plan.StartFrame-_itemSamples)*AudioFormat.BytesPerSampleFrame);
             AddSlice(position,position+take/AudioFormat.BytesPerSampleFrame,PreparedCursor());
             _decoded.Memory.Slice(_decodedOffset,take).CopyTo(target[offset..]);
             offset+=take;_decodedOffset+=take;_itemSamples+=take/AudioFormat.BytesPerSampleFrame;

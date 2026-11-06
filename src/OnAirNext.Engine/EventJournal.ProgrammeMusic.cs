@@ -62,6 +62,7 @@ public sealed partial class EventJournal
             return;
         }
         if (entry.Type == "decode_failed" && existing is { State: "Failed" }) return;
+        if (entry.Type == "resumed" && existing is { State: "Playing" }) return;
         var state = entry.Type switch
         {
             "ended" or "skipped" => "Completed",

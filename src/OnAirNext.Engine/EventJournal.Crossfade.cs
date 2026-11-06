@@ -26,7 +26,7 @@ public sealed partial class EventJournal
         if (entry.Type is "ended" or "skipped" or "failed" or "decode_failed" or "interrupted")
         {
             using var clear = PublicationCommand(connection, transaction,
-                "DELETE FROM playout_overlaps WHERE station_id=$station AND outgoing_occurrence=$outgoing",
+                "DELETE FROM playout_overlaps WHERE station_id=$station AND (outgoing_occurrence=$outgoing OR incoming_occurrence=$outgoing)",
                 ("$station", entry.StationId), ("$outgoing", entry.OccurrenceId));
             clear.ExecuteNonQuery();
         }

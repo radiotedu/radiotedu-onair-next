@@ -43,6 +43,7 @@ public sealed partial class StationEngine : IStationSession
     private Exception? _preparationFault;
     private ProgrammeLoudnessMonitor? _loudness;
     private readonly TruePeakLimiter48k _limiter=new();
+    private readonly EqualPowerCrossfade? _crossfadeCurve;
     private LimiterSnapshot? _publishedLimiter;
     private readonly ConcurrentDictionary<string,byte> _requestedSkips=new(StringComparer.Ordinal);
     public LiveInput Live {get;}=new();
@@ -61,6 +62,7 @@ public sealed partial class StationEngine : IStationSession
         if(settings.Outputs.Select(x=>(x.Host,x.Port,x.Mount)).Distinct().Count()!=settings.Outputs.Count)throw new ArgumentException("Duplicate source ownership is prohibited.");
         if(!double.IsFinite(settings.CrossfadeSeconds)||settings.CrossfadeSeconds<0||settings.CrossfadeSeconds>15||
             settings.CrossfadeSeconds>0&&settings.CrossfadeSeconds<.5)throw new ArgumentException("Crossfade must be disabled or between 0.5 and 15 seconds.");
+        if(settings.CrossfadeSeconds>0)_crossfadeCurve=new(checked((int)Math.Round(settings.CrossfadeSeconds*AudioFormat.SampleRate,MidpointRounding.AwayFromZero)));
         _settings=settings;_journal=journal;_planner=planner;_branding=branding;_programmes=programmes;_utcNow=utcNow??(()=>DateTimeOffset.UtcNow);
         _decoders=new(decoderFactory??(item=>new MediaDecoder(ffmpeg,item)));
         _validateEncoders=validateEncoders??(()=>EncoderCapabilities.ValidateAsync(ffmpeg,settings.Outputs));
@@ -175,9 +177,12 @@ public sealed partial class StationEngine : IStationSession
                 Volatile.Write(ref _publishedLimiter,_limiter.Snapshot());
                 frame.Dispose();frame=null;
                 if(checkpointClock.ElapsedMilliseconds>=250){QueueAudit(()=>_journal.SaveCheckpointAsync(AudibleCheckpoint("Playing")));checkpointClock.Restart();}
-                await ApplySkipsAsync();
-                if(Interlocked.Exchange(ref _refreshNext,0)==1&&!_inputEnded)await RefreshPreparedAsync();
-                await ApplyProgrammeAsync();
+                if(_crossfade is null)
+                {
+                    await ApplySkipsAsync();
+                    if(Interlocked.Exchange(ref _refreshNext,0)==1&&!_inputEnded)await RefreshPreparedAsync();
+                    await ApplyProgrammeAsync();
+                }
                 UpdateVisibleNext();frame=await RenderNextAsync(_stop.Token);
             }
             if(!_stop.IsCancellationRequested&&_preparationFault is not null)throw _preparationFault;
@@ -217,6 +222,7 @@ public sealed partial class StationEngine : IStationSession
     }
     private async Task ReleaseDecodersAsync()
     {
+        ReleaseCrossfade();
         RetireSource(_decoder,_currentPrefetch);
         RetireSource(_programmeSource?.Decoder,_programmeSource?.Prefetch);
         foreach(var source in new[]{_nextSource,_secondBrand,_musicFallback})
