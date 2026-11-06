@@ -120,9 +120,12 @@ public sealed class DecoderPreparationTests
         {
             await station.StartAsync();await futureEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));await oldClosing.Task.WaitAsync(TimeSpan.FromSeconds(10));
             var before=station.Snapshot().Samples;
-            await Task.Delay(500);
+            // The runner can deschedule the audio worker while it is executing other tests.
+            // Prove forward progress with both independent operations still blocked; real-time
+            // pacing is qualified separately by the encoded-listener audio scenario.
+            await Until(()=>station.Snapshot().Samples-before>=48000*.35);
             var after=station.Snapshot();Assert.Equal("Running",after.State);Assert.Equal("second",after.CurrentAssetId);
-            Assert.True(after.Samples-before>=48000*.35,$"Only {after.Samples-before} programme frames advanced while future open and retirement were blocked.");
+            Assert.False(open.IsSet);Assert.False(close.Task.IsCompleted);
             Assert.True(output.Blocks>=35);Assert.Equal(0,after.AuditRejectedEvents);
             Assert.InRange(after.DecoderPreparation!.Active,1,4);
         }
