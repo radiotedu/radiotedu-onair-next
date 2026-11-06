@@ -18,22 +18,24 @@ class Element{
  querySelectorAll(){return[];}
 }
 async function open({engines=['onair-next-dev-service'],preview=false,sessionDenied=false}={}){
- const nodes=new Map(),requests=[],intervals=[];let available=engines;
+ const nodes=new Map(),requests=[],intervals=[];let available=engines,failedStatus=false,now=Date.now();
+ class Clock extends Date{constructor(...args){super(...(args.length?args:[now]));}static now(){return now;}}
  const get=id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id)};
  const document={hidden:false,body:new Element(),getElementById:get,createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),createTextNode:text=>({textContent:text}),querySelectorAll:()=>[],querySelector:()=>new Element(),addEventListener(){}};
  const api=async(url,options={})=>{requests.push({url,method:options.method??'GET'});let value,status=200;
   if(url==='/api/session'){status=sessionDenied?403:200;value=sessionDenied?{error:'Open the installed shortcut'}:{token:'fixture-token',preview};}
   else if(url==='/api/engines')value={engines:available,preview};
-  else if(url.startsWith('/api/status?'))value={stations:[{Id:'9',State:'Running',Enabled:true,RequestedRunning:true,CurrentTitle:'Live fixture song',CurrentArtist:'Fixture artist',Samples:480000,CurrentItemSamples:48000,CurrentDurationSeconds:100,Outputs:[{Id:'fixture-output',State:'SourceConnected'}]}],controller:{mode:'windows-service',capabilities:[]},audit:{PendingEvents:0,RejectedEvents:0}};
+  else if(url.startsWith('/api/status?')){if(failedStatus){status=503;value={error:'Temporary unavailable'};}else value={stations:[{Id:'9',State:'Running',Enabled:true,RequestedRunning:true,CurrentTitle:'Live fixture song',CurrentArtist:'Fixture artist',Samples:480000,CurrentItemSamples:48000,CurrentDurationSeconds:100,Outputs:[{Id:'fixture-output',State:'SourceConnected'}]}],controller:{mode:'windows-service',capabilities:[]},audit:{PendingEvents:0,RejectedEvents:0}};}
+  else if(url.startsWith('/api/loudness?'))value={station:'9',meter:null};
   else throw Error('Unexpected request '+url);
   return{ok:status===200,status,json:async()=>value};
  };
  const ui={create:()=>({update(){},show(){}})};
- const context={document,location:{hash:'#access='+'a'.repeat(64),pathname:'/',search:''},history:{replaceState(){}},sessionStorage:storage(),localStorage:storage(),URLSearchParams,AbortSignal,Intl,Date,console,crypto:require('node:crypto').webcrypto,fetch:api,setInterval:(f,ms)=>{intervals.push({f,ms});return intervals.length},setTimeout,clearTimeout,
+ const context={document,location:{hash:'#access='+'a'.repeat(64),pathname:'/',search:''},history:{replaceState(){}},sessionStorage:storage(),localStorage:storage(),URLSearchParams,AbortSignal,Intl,Date:Clock,console,crypto:require('node:crypto').webcrypto,fetch:api,setInterval:(f,ms)=>{intervals.push({f,ms});return intervals.length},setTimeout,clearTimeout,
   RadioTeduMeter:require('../../src/OnAirNext.Web/wwwroot/programme-meter.js'),RadioTeduQueue:require('../../src/OnAirNext.Web/wwwroot/queue.js'),RadioTeduCue:ui,RadioTeduProgrammes:ui,RadioTeduBranding:ui};
  vm.runInNewContext(source,context,{filename:'studio.js'});
  const flush=async()=>{for(let i=0;i<5;i++)await new Promise(r=>setImmediate(r));};await flush();
- return{get,requests,flush,setEngines:v=>available=v,tick:async(n=5)=>{for(let i=0;i<n;i++){for(const timer of intervals.filter(t=>t.ms===1000))timer.f();await flush();}}};
+ return{get,requests,flush,setEngines:v=>available=v,setStatusFailure:v=>failedStatus=v,tick:async(n=5)=>{for(let i=0;i<n;i++){now+=1000;for(const timer of intervals.filter(t=>t.ms===1000))timer.f();await flush();}},meterTick:async(n)=>{for(let i=0;i<n;i++){now+=100;for(const timer of intervals.filter(t=>t.ms===100))timer.f();await flush();}}};
 }
 test('authorized console loads the installed live programme on open using GET requests only',async()=>{
  const page=await open();assert.equal(page.get('station-state').textContent,'Running');assert.equal(page.get('now-title').textContent,'Live fixture song');assert.equal(page.get('now-artist').textContent,'Fixture artist');assert.equal(page.get('footer-status').textContent,'Engine connected');assert.ok(page.requests.some(r=>r.url==='/api/status?engine=onair-next-dev-service'));assert.ok(page.requests.every(r=>r.method==='GET'));
@@ -49,4 +51,13 @@ test('explicit console disconnect is respected without stopping broadcasts',asyn
 });
 test('a rejected operator session cannot attach to an engine',async()=>{
  const page=await open({sessionDenied:true});assert.equal(page.get('station-state').textContent,'Not connected');assert.ok(!page.requests.some(r=>r.url.startsWith('/api/status')));
+});
+test('a transient status failure retains a recent sample but does not present stale data as live',async()=>{
+ const page=await open();page.setStatusFailure(true);await page.tick(2);assert.equal(page.get('station-state').textContent,'Running');
+ await page.tick(3);assert.equal(page.get('station-state').textContent,'Not connected');page.setStatusFailure(false);await page.tick(1);
+ assert.equal(page.get('station-state').textContent,'Running');assert.equal(page.get('now-title').textContent,'Live fixture song');
+});
+test('an open inspector limits meter requests while continuing to update',async()=>{
+ const page=await open();page.get('channel-inspector').offsetParent={};await page.meterTick(30);
+ const calls=page.requests.filter(r=>r.url.startsWith('/api/loudness?'));assert.equal(calls.length,3);
 });
