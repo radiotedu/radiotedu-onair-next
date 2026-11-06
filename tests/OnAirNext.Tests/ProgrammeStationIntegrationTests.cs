@@ -119,6 +119,43 @@ public sealed class ProgrammeStationIntegrationTests
     }
 
     [Fact]
+    public async Task TimedRecordingContinuesPastItsAdmissionWindowAndSpecialMusicResumes()
+    {
+        var root=Folder();var music=Path.Combine(root,"music");var timed=Path.Combine(root,"timed");
+        Directory.CreateDirectory(music);Directory.CreateDirectory(timed);
+        await File.WriteAllTextAsync(Path.Combine(music,"special.opus"),"music fixture");
+        var recording=Path.Combine(timed,"recording.opus");await File.WriteAllTextAsync(recording,"recording fixture");
+        await using var journal=new EventJournal(Path.Combine(root,"playback.db"));
+        var clock=new Clock(Local(10,9,4,58));var (runtime,_)=await Prepare(journal,music,clock,allDay:true);
+        await using(runtime)
+        {
+            var known=new HashSet<string>(["4"],StringComparer.Ordinal);var day=new DateOnly(2026,11,10);
+            var draft=new ProgrammeDraft(new(Id(),1,"09:05 recording",["4"],CalendarRuleKind.TimedSweeper,
+                day,day,new TimeOnly(9,5),new TimeOnly(9,6),StartPolicy:CalendarStartPolicy.FadeAtTime,
+                LateToleranceSeconds:1),timed,SourceFile:Path.GetFileName(recording));
+            await journal.SaveProgrammeDraftAsync(draft,0,Id(),"operator",known);
+            await using var preparation=new ProgrammeMediaPreparation(Probe);
+            var prepared=await preparation.PrepareAsync(draft,known);
+            await journal.PublishPreparedProgrammeAsync(prepared,0,Id(),"operator",known);await runtime.RefreshAsync();
+            Assert.True(runtime.Snapshot().Healthy);
+            var output=new Output();var normal=new MediaItem("normal","normal.opus","Normal artist","Normal song");
+            await using var station=new StationEngine("unused",new("4",[normal],[],Repeat:true),journal,[output],null,null,
+                item=>new Decoder(item.Id==prepared.Items[0].Id?300:1000,.2f),()=>Task.CompletedTask,runtime,()=>clock.GetUtcNow());
+            await station.StartAsync();
+            await Until(()=>station.Snapshot().CurrentAssetId==prepared.Items[0].Id);
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            Assert.Equal(prepared.Items[0].Id,station.Snapshot().CurrentAssetId);
+            await Until(()=>station.Snapshot().CurrentAssetId!=prepared.Items[0].Id);
+            await Until(()=>EventJournal.ReadEvents(journal.DatabasePath).Any(e=>e.Type=="ended"&&e.ItemId==prepared.Items[0].Id));
+            var events=EventJournal.ReadEvents(journal.DatabasePath);
+            var started=Assert.Single(events,e=>e.Type=="started"&&e.ItemId==prepared.Items[0].Id);
+            var ended=Assert.Single(events,e=>e.Type=="ended"&&e.ItemId==prepared.Items[0].Id);
+            Assert.Equal(300L*960,ended.SamplePosition-started.SamplePosition);
+            Assert.Equal("Running",station.Snapshot().State);Assert.Equal(1,output.Starts);
+        }
+    }
+
+    [Fact]
     public async Task AFailedFirstSpecialSourceLeavesNormalAudioRunningAndAdvancesToAnotherSong()
     {
         var root = Folder(); var media = Path.Combine(root, "music"); Directory.CreateDirectory(media);
