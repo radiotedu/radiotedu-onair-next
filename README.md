@@ -82,6 +82,6 @@ The developer verification entry point is scripts/Test-Engine.ps1. Loopback scen
 | tests/OnAirNext.Lab | Owned loopback fixtures and independent listener analysis |
 | artifacts/evidence | Sanitized summaries; no credentials, database or media |
 
-Public source: [akgularda/radiotedu-onair-next](https://github.com/akgularda/radiotedu-onair-next). Report archive remains private. Never commit credentials, real databases, recordings or music.
+Public source: [radiotedu/radiotedu-onair-next](https://github.com/radiotedu/radiotedu-onair-next). Report archive remains private. Never commit credentials, real databases, recordings or music.
 
 The new source adds an isolated pinned FFmpeg/FDK runtime build, actual codec smoke qualification and a synthetic 8-station/18-output scenario. The first run exposed measurement-history storage blocking and a build pipeline/DLL-audit failure; fixes and fresh qualification are pending. See [codec runtime scope](docs/CODEC_RUNTIME.md) and the retained failure evidence. Production ownership is unchanged; prior engine evidence applies to its exact recorded source only.

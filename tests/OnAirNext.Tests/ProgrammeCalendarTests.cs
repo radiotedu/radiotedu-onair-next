@@ -118,6 +118,28 @@ public sealed class ProgrammeCalendarTests
     }
 
     [Fact]
+    public void NovemberRemembranceWindowAndTimedInsertionUseIstanbulAndOnlyTargetRadio()
+    {
+        var date = new DateOnly(2026, 11, 10);
+        var day = Rule() with { FirstDate = date, LastDate = date, StartsAt = TimeOnly.MinValue,
+            EndsAt = TimeOnly.MinValue, AllDay = true, StartPolicy = CalendarStartPolicy.FadeAtTime,
+            ReturnPolicy = CalendarReturnPolicy.FadeAtTime };
+        var insertion = Rule() with { FirstDate = date, LastDate = date, Kind = CalendarRuleKind.TimedSweeper,
+            StartsAt = new(9, 5), EndsAt = new(9, 6), StartPolicy = CalendarStartPolicy.FadeAtTime };
+        var forecast = Preview([day, insertion], Local(2026, 11, 10));
+        Assert.Equal(2, forecast.Occurrences.Count);
+        Assert.All(forecast.Occurrences, x => Assert.Equal("4", x.StationId));
+        var programme = Assert.Single(forecast.Occurrences, x => x.Kind == CalendarRuleKind.SpecialDay);
+        Assert.Equal(Local(2026, 11, 10).ToUniversalTime(), programme.DueAtUtc);
+        Assert.Equal(Local(2026, 11, 11).ToUniversalTime(), programme.EndsAtUtc);
+        var timed = Assert.Single(forecast.Occurrences, x => x.Kind == CalendarRuleKind.TimedSweeper);
+        Assert.Equal(Local(2026, 11, 10, 9, 5).ToUniversalTime(), timed.DueAtUtc);
+        Assert.Equal(timed.DueAtUtc, timed.EstimateStart(Local(2026, 11, 10, 9, 7)));
+        Assert.Equal(CalendarConflictKind.SweeperInProgrammeWindow, Assert.Single(forecast.Conflicts).Kind);
+        Assert.Empty(Preview([day, insertion], Local(2026, 11, 11)).Occurrences);
+    }
+
+    [Fact]
     public void InvalidRangesDuplicateIdsAndUnboundedPreviewAreRejected()
     {
         var rule = Rule();
