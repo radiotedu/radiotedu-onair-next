@@ -93,6 +93,21 @@ public sealed partial class EventJournal
         });
     }
 
+    public Task<ProgrammeDraftRevision> ProgrammeDraftAsync(string draftId, long expectedVersion, IReadOnlySet<string> installedStations)
+    {
+        ArgumentNullException.ThrowIfNull(installedStations);
+        var id = ProgrammeId(draftId); var known = installedStations.ToHashSet(StringComparer.Ordinal);
+        if (expectedVersion < 1) throw new ArgumentException("Review the saved programme version.");
+        return TransactionAsync((connection, transaction) =>
+        {
+            var draft = ProgrammeHead(connection, transaction, id, known)
+                ?? throw new InvalidOperationException("The saved programme is unavailable.");
+            if (draft.Archived || draft.Version != expectedVersion)
+                throw new InvalidOperationException("The saved programme changed. Reload it before preparing its audio.");
+            return draft;
+        });
+    }
+
     public Task<ProgrammeDraftHistory> ProgrammeDraftHistoryAsync(string draftId, long expectedVersion,
         IReadOnlySet<string> installedStations, int offset = 0)
     {

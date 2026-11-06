@@ -85,6 +85,13 @@ public sealed partial class EventJournal
         });
     }
 
+    public Task<ProgrammePublication?> ProgrammePublicationAsync(string id, IReadOnlySet<string> stations)
+    {
+        ArgumentNullException.ThrowIfNull(stations);
+        var key = ProgrammeId(id); var known = stations.ToHashSet(StringComparer.Ordinal);
+        return TransactionAsync((connection, transaction) => PublicationHead(connection, transaction, key, known));
+    }
+
     private static ProgrammePublication WritePublication(SqliteConnection c, SqliteTransaction t, ProgrammePublication value,
         ProgrammePublication? previous, string commandId, string requestHash)
     {
