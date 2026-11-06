@@ -71,5 +71,23 @@ public sealed class NextPcmPrefetchTests
         Assert.True(prefetch.TryTake(out var block));
         block!.Dispose();
         Assert.False(prefetch.TryTake(out _));
+        await Assert.ThrowsAsync<IOException>(() => prefetch.ReadAsync(CancellationToken.None).AsTask());
+    }
+
+    [Fact]
+    public async Task BufferedSourceCanContinueAsAStreamingSingleReader()
+    {
+        var release = new TaskCompletionSource<PcmBlock?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        async ValueTask<PcmBlock?> Read(CancellationToken token)
+            => Interlocked.Increment(ref calls) == 1 ? await release.Task.WaitAsync(token) : null;
+        await using var decoder = new Decoder(Read);
+        await using var prefetch = new NextPcmPrefetch(decoder, 4);
+        var pending = prefetch.ReadAsync(CancellationToken.None).AsTask();
+        Assert.False(pending.IsCompleted);
+        release.SetResult(PcmBlock.Rent());
+        using var received = await pending.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.NotNull(received);
+        Assert.Null(await prefetch.ReadAsync(CancellationToken.None));
     }
 }
