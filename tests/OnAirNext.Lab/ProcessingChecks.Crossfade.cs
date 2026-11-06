@@ -32,6 +32,14 @@ internal static partial class ProcessingChecks
             if(wait.Elapsed>TimeSpan.FromSeconds(20))throw new TimeoutException("The measured crossfade did not complete.");
             await Task.Delay(50);
         }
+        var metadataWait=Stopwatch.StartNew();
+        while(!station.Snapshot().Outputs.All(x=>x.Metadata?.PublishedTitle==second.Artist+" - "+second.Title))
+        {
+            if(metadataWait.Elapsed>TimeSpan.FromSeconds(1))throw new TimeoutException("Both listeners did not receive the incoming song metadata.");
+            await Task.Delay(50);
+        }
+        Check(result,station.Snapshot().Outputs.All(x=>x.Metadata?.PublishedTitle==second.Artist+" - "+second.Title),
+            "Both outputs publish the incoming song metadata at the transition.");
         await Task.Delay(TimeSpan.FromSeconds(3));
         var state=station.Snapshot();var listeners=new[]{main.Snapshot(),low.Snapshot()};
         var events=EventJournal.ReadEvents(journal.DatabasePath);
