@@ -69,6 +69,7 @@ public sealed partial class StationEngine
                     var at=_preparedSamples+offset/AudioFormat.BytesPerSampleFrame;
                     if(_announced){PrepareBoundary("failed",at,"Decoding stopped during the asset.");_announced=false;}
                     PrepareBoundary("decode_failed",at,"Asset rejected: "+ex.GetType().Name);
+                    MarkProgrammeSourceFailed(_selection);
                     if(IsBranding(_selection))_failedBrandingAssets.Add(_selection.Item.Id);
                     else if(++failedAssets>=Math.Max(1,_planner?.AvailableItems??_settings.Playlist.Count))
                     {_preparationFault=new InvalidDataException("No approved asset could be decoded.",ex);break;}
@@ -82,6 +83,7 @@ public sealed partial class StationEngine
                     else
                     {
                         PrepareBoundary("decode_failed",at,"The asset decoded without programme samples.");
+                        MarkProgrammeSourceFailed(_selection);
                         if(IsBranding(_selection))_failedBrandingAssets.Add(_selection.Item.Id);
                         else if(++failedAssets>=Math.Max(1,_planner?.AvailableItems??_settings.Playlist.Count))
                         {_preparationFault=new InvalidDataException("Approved playlist contains no audio.");break;}
@@ -126,6 +128,8 @@ public sealed partial class StationEngine
     private PlayoutSelection Select(int index)=>ChooseBranding(TrySelectOrdinary(index),_preparedBranding)
         ??throw new InvalidOperationException("No validated source is available for this station.");
     private PlayoutSelection? TrySelectOrdinary(int index)
+        =>NextProgrammeMusic()??TrySelectNormal(index);
+    private PlayoutSelection? TrySelectNormal(int index)
     {
         if(_planner is not null)return _planner.SelectPrepared(index,_inflightQueue);
         return _settings.Playlist.Count==0||!_settings.Repeat&&index>=_settings.Playlist.Count?null:new(_settings.Playlist[index%_settings.Playlist.Count]);
@@ -152,13 +156,15 @@ public sealed partial class StationEngine
 
     private ValueTask PrepareNextAsync(bool assumeCurrentCompleted=true,bool retryFault=false)
     {
-        var ordinary=TrySelectOrdinary(NextRotationIndex);
+        var normal=TrySelectNormal(NextRotationIndex);
+        var programme=NextProgrammeMusic();
+        var ordinary=programme??normal;
         var projected=assumeCurrentCompleted&&_selection is not null&&_selection.ProgrammeMusicKey is null
             ?_preparedBranding.Project(_selection.Item.Kind,"ended"):_preparedBranding;
         var desired=ChooseBranding(ordinary,projected);
         var second=IsBranding(desired)?ChooseBranding(ordinary,projected.Project(desired!.Item.Kind,"ended")):null;
         if(!IsBranding(second))second=null;
-        var fallback=IsBranding(desired)?ordinary:null;
+        var fallback=programme is not null?normal:IsBranding(desired)?ordinary:null;
         var retained=new List<PreparedSource>(3);
         if(_nextSource is not null)retained.Add(_nextSource);
         if(_secondBrand is not null)retained.Add(_secondBrand);
@@ -214,6 +220,9 @@ public sealed partial class StationEngine
             else if(candidate.Ready.IsCanceled)chosen.Fault=new IOException("Branding decoder preparation was cancelled.");
             else if(!candidate.Ready.IsCompleted)chosen=_musicFallback;
         }
+        if(chosen?.Selection.ProgrammeMusicKey is not null && chosen?.Decoder is {} musicDecoder &&
+            !musicDecoder.Ready.IsCompleted && _musicFallback?.Decoder?.Ready.IsCompleted == true)
+            chosen=_musicFallback;
         if(ReferenceEquals(chosen,_nextSource))_nextSource=null;
         else if(ReferenceEquals(chosen,_musicFallback))_musicFallback=null;
         _decoded?.Dispose();_decoded=null;

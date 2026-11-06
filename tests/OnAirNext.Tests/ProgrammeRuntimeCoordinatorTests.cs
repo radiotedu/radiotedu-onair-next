@@ -62,6 +62,13 @@ public sealed class ProgrammeRuntimeCoordinatorTests
             await runtime.RefreshAsync(); Assert.Equal(1, runtime.Snapshot().Stations["4"].Music!.Selection.ProgrammeMusicPosition);
             clock.Now = Local(10, 9, 5); await runtime.RefreshAsync();
             var signal = runtime.Snapshot().Stations["4"].DueInsertion!; var attempt = Id(); var clip = signal.Selection.Item;
+            var interrupted = new PlayoutCheckpoint("4", "RestartPending", 0, clip, attempt, 48000, 96000, true,
+                Local(10, 9, 6), HoldsRotation: true, ScheduledOccurrenceKey: signal.Occurrence.Key);
+            clock.Now = Local(10, 9, 6, 15); await runtime.RefreshAsync();
+            Assert.True(runtime.CanResume("4", interrupted, clock.GetUtcNow()));
+            clock.Now = Local(10, 9, 10); await runtime.RefreshAsync();
+            Assert.False(runtime.CanResume("4", interrupted, clock.GetUtcNow()));
+            clock.Now = Local(10, 9, 5); await runtime.RefreshAsync();
             await journal.AppendAsync(new(Id(), attempt, "4", "started", clip.Id, clip.Artist, clip.Title, clip.Kind,
                 clock.GetUtcNow(), 0, ScheduledOccurrenceKey: signal.Occurrence.Key));
             await journal.AppendAsync(new(Id(), attempt, "4", "ended", clip.Id, clip.Artist, clip.Title, clip.Kind,

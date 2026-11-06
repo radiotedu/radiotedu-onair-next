@@ -27,6 +27,31 @@ public sealed partial class EventJournal
         return result;
     }
 
+    public Task<PlayoutCheckpoint> DeferUnavailableProgrammeRecoveryAsync(string station, string expectedOccurrence)
+        => TransactionAsync((connection, transaction) =>
+    {
+        using var read = connection.CreateCommand(); read.Transaction = transaction;
+        read.CommandText = "SELECT payload FROM playout_checkpoints WHERE station_id=$station";
+        read.Parameters.AddWithValue("$station", station);
+        var saved = read.ExecuteScalar() is string payload ? JsonSerializer.Deserialize<PlayoutCheckpoint>(payload) : null;
+        if (saved is not { Item: not null, HoldsRotation: true, QueueEntryId: null } || saved.OccurrenceId != expectedOccurrence ||
+            saved.State is not ("RestartPending" or "Stopped") ||
+            saved.ScheduledOccurrenceKey is null && saved.ProgrammeMusicKey is null)
+            throw new InvalidOperationException("The unfinished scheduled item changed. Recovery was not altered.");
+        var item = saved.Item;
+        if (saved.Announced)
+            WriteEvent(connection, transaction, new PlaybackEvent(Guid.NewGuid().ToString("N"), saved.OccurrenceId, station,
+                "recovery_deferred", item.Id, item.Artist, item.Title, item.Kind, saved.SavedAtUtc, saved.ProgramSamples,
+                "The scheduled item is no longer eligible or its programme is unavailable. Normal rotation remains at its saved position.",
+                PreviousOccurrenceId: saved.PreviousOccurrenceId, TimingQuality: "last_committed_checkpoint",
+                ScheduledOccurrenceKey: saved.ScheduledOccurrenceKey, ProgrammeMusicKey: saved.ProgrammeMusicKey,
+                ProgrammeMusicPosition: saved.ProgrammeMusicPosition));
+        ConsumeSkips(connection, transaction, station, saved.OccurrenceId);
+        var next = saved with { State = "BetweenItems", Item = null, ItemSamples = 0, Announced = false, HoldsRotation = false,
+            ScheduledOccurrenceKey = null, ProgrammeMusicKey = null, ProgrammeMusicPosition = null };
+        WriteCheckpoint(connection, transaction, next); return next;
+    });
+
     public async Task RequireRecoveryReaderAsync(IReadOnlyCollection<string>? features)
     {
         if (features?.Contains(RecoveryCompatibility.StationQueueFeature, StringComparer.Ordinal) != true &&

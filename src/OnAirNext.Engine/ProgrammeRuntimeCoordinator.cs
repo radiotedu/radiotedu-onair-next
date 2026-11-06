@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using System.Globalization;
 
 namespace OnAirNext.Engine;
 
@@ -32,6 +33,54 @@ public sealed class ProgrammeRuntimeCoordinator : IAsyncDisposable
     }
 
     public ProgrammeRuntimeSnapshot Snapshot() => Volatile.Read(ref _snapshot);
+
+    public ProgrammeAudioCue? MusicAt(string station, DateTimeOffset now)
+    {
+        var snapshot = Snapshot();
+        if (!snapshot.Healthy || Math.Abs((now - snapshot.UpdatedAtUtc).TotalSeconds) > 30 ||
+            !snapshot.Stations.TryGetValue(station, out var view)) return null;
+        return ActiveMusic(view, now);
+    }
+
+    public bool CanResume(string station, PlayoutCheckpoint checkpoint, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(checkpoint);
+        var snapshot = Snapshot();
+        if (!snapshot.Healthy || Math.Abs((now - snapshot.UpdatedAtUtc).TotalSeconds) > 30 ||
+            checkpoint.StationId != station || checkpoint.Item is null || !checkpoint.HoldsRotation ||
+            !snapshot.Stations.TryGetValue(station, out var view)) return false;
+        var music = ActiveMusic(view, now);
+        if (checkpoint.ProgrammeMusicKey is { } musicKey)
+            return music?.Occurrence.Key == musicKey && checkpoint.Item.Kind == ContentKind.Music && checkpoint.ProgrammeMusicPosition is >= 0;
+        if (checkpoint.ScheduledOccurrenceKey is not { } key || checkpoint.Item.Kind is not (ContentKind.Program or ContentKind.Sweeper)) return false;
+        var parts = key.Split('/');
+        if (parts.Length != 4 || parts[2] != station || !long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var version) ||
+            !long.TryParse(parts[3], NumberStyles.None, CultureInfo.InvariantCulture, out var ticks) ||
+            ticks < DateTimeOffset.MinValue.UtcTicks || ticks > DateTimeOffset.MaxValue.UtcTicks) return false;
+        var publication = _publications.FirstOrDefault(p => p.Active && p.Id == parts[0] && p.Programme.Draft.Rule.Version == version &&
+            p.Programme.Draft.Rule.Kind == CalendarRuleKind.TimedSweeper && p.Programme.Draft.Rule.Stations.Contains(station, StringComparer.Ordinal));
+        if (publication is null) return false;
+        var due = new DateTimeOffset(ticks, TimeSpan.Zero);
+        if (due.Year is < 2 or > 9998 || now < due) return false;
+        var occurrence = ProgrammeCalendar.Forecast([publication.Programme.Draft.Rule with { Enabled = true }], _stations,
+            due, TimeSpan.FromSeconds(1)).Occurrences.SingleOrDefault(o => o.Key == key);
+        if (occurrence is null) return false;
+        if (now < occurrence.EndsAtUtc) return true;
+        // An interrupted recording may finish after its admission window, but
+        // must not unexpectedly replay much later or after its owning day ends.
+        var duration = checkpoint.Item.DurationSeconds ?? 0;
+        return music is not null && due >= music.Occurrence.DueAtUtc && due < music.Occurrence.EndsAtUtc &&
+            now < music.Occurrence.EndsAtUtc && double.IsFinite(duration) && duration > 0 && duration <= 3600 &&
+            now - due <= TimeSpan.FromSeconds(duration + 120) && now - checkpoint.SavedAtUtc >= TimeSpan.FromSeconds(-30) &&
+            now - checkpoint.SavedAtUtc <= TimeSpan.FromMinutes(2);
+    }
+
+    private static ProgrammeAudioCue? ActiveMusic(ProgrammeRuntimeView view, DateTimeOffset now)
+    {
+        var cue = view.Music ?? view.Upcoming;
+        return cue is not null && cue.Occurrence.Kind == CalendarRuleKind.SpecialDay &&
+            cue.Occurrence.DueAtUtc <= now && now < cue.Occurrence.EndsAtUtc ? cue : null;
+    }
 
     public void Start()
     {

@@ -39,10 +39,12 @@ public sealed partial class StationEngine
     private void PrepareBoundary(string type,long position,string detail="")
     {
         if(_boundaries.Count>=MaximumPreparedEntries)throw new InvalidOperationException("Prepared event ownership exceeded its bounded window.");
-        var between=type is "ended" or "skipped" or "failed" or "decode_failed" or "queue_deferred";
+        var between=type is "ended" or "skipped" or "failed" or "decode_failed" or "queue_deferred" or "interrupted";
         var cursor=PreparedCursor();
+        if((type is "ended" or "skipped") && cursor.Selection.ScheduledOccurrenceKey is { } scheduled)
+            RememberProgrammeInsertion(scheduled);
         var checkpoint=new PlayoutCheckpoint(_settings.Id,between?"BetweenItems":"Playing",
-            _index+(between&&_selection?.AdvancesRotation==true?1:0),between?null:_selection?.Item,_occurrence,
+            _index+(between&&type!="interrupted"&&_selection?.AdvancesRotation==true?1:0),between?null:_selection?.Item,_occurrence,
             between?0:_itemSamples,position,!between&&_announced,default,between?null:_selection?.QueueEntryId,_sessionId,_previousOccurrence,
             !between&&_selection?.HoldsRotation==true,between?null:_selection?.ScheduledOccurrenceKey,
             between?null:_selection?.ProgrammeMusicKey,between?null:_selection?.ProgrammeMusicPosition);
@@ -68,7 +70,7 @@ public sealed partial class StationEngine
                 SourceGain:SourceNormalization.Decide(item.Loudness),ScheduledOccurrenceKey:cursor.Selection.ScheduledOccurrenceKey,
                 ProgrammeMusicKey:cursor.Selection.ProgrammeMusicKey,ProgrammeMusicPosition:cursor.Selection.ProgrammeMusicPosition);
             var checkpoint=boundary.Checkpoint with{SavedAtUtc=DateTimeOffset.UtcNow};
-            var terminal=boundary.Type is "ended" or "skipped" or "failed" or "decode_failed" or "queue_deferred";
+            var terminal=boundary.Type is "ended" or "skipped" or "failed" or "decode_failed" or "queue_deferred" or "interrupted";
             QueueAudit(()=>_journal.AppendAsync(entry,checkpoint),terminal?cursor.Selection.QueueEntryId:null);
             _lastCheckpoint=checkpoint;
             if(boundary.Type=="started")
@@ -80,6 +82,8 @@ public sealed partial class StationEngine
             {
                 if(Volatile.Read(ref _audible)?.Occurrence==cursor.Occurrence)Volatile.Write(ref _audible,null);
                 _requestedSkips.TryRemove(cursor.Occurrence,out _);
+                if((boundary.Type is "ended" or "skipped") && cursor.Selection.ScheduledOccurrenceKey is { } scheduled)
+                    RememberProgrammeInsertion(scheduled);
                 if(boundary.Type=="ended")Interlocked.Increment(ref _completed);
                 if(boundary.Type=="skipped")Interlocked.Increment(ref _skipped);
             }
