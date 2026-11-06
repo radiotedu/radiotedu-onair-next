@@ -15,7 +15,24 @@ public sealed class ProgrammeMusicOrderTests
         Assert.Equal(tracks.Select(x => x.Id).Order(), first.Select(x => x.Id).Order());
         Assert.Equal(first.Select(x => x.Id), replay.Select(x => x.Id));
         Assert.NotEqual(first.Select(x => x.Id), next.Select(x => x.Id));
+        Assert.NotEqual(first[^1].Id, next[0].Id);
         Assert.Equal(tracks.Select(x => x.Id), ProgrammeMusicOrder.PrepareCycle(tracks, ProgrammeOrder.FolderOrder, "event", 0).Select(x => x.Id));
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(34)]
+    public void ConsecutiveCyclesDoNotRepeatTheBoundaryTrack(int count)
+    {
+        var tracks = Enumerable.Range(0, count).Select(i => new MediaItem($"song-{i:D2}", $"song-{i:D2}.opus", "", $"Song {i}")).ToArray();
+        var previous = ProgrammeMusicOrder.PrepareCycle(tracks, ProgrammeOrder.Shuffle, "station-event", 0);
+        for (var cycle = 1; cycle < 50; cycle++)
+        {
+            var next = ProgrammeMusicOrder.PrepareCycle(tracks, ProgrammeOrder.Shuffle, "station-event", cycle);
+            Assert.NotEqual(previous[^1].Id, next[0].Id); Assert.Equal(count, next.Select(x => x.Id).Distinct().Count());
+            previous = next;
+        }
     }
 
     [Fact]

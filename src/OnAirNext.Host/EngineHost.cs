@@ -103,9 +103,10 @@ internal static class EngineHost
             await branding.InitializeAsync();
             await library.InitializeAsync();
             await journal.InitializeProgrammePlaybackAsync();
+            await journal.InitializeProgrammeDraftsAsync();
+            await journal.InitializeProgrammePublicationsAsync();
             if (serviceMode) WindowsServiceDiagnostics.Stage("coordinator initialization");
             await coordinator.InitializeAsync(queues.InitializeAsync);
-            await journal.InitializeProgrammeDraftsAsync();
             var programmeStations = config.Stations.Select(station => station.Id).ToHashSet(StringComparer.Ordinal);
             var programmeActor = config.OperatorSid ?? "isolated-operator";
             var inbox = new UploadInbox(journal, library);

@@ -24,11 +24,21 @@ public static class ProgrammeMusicOrder
             items.Select(x => x.Id).Distinct(StringComparer.Ordinal).Count() != items.Length)
             throw new ArgumentException("Choose 1–4,096 distinct validated music assets.");
         if (order == ProgrammeOrder.FolderOrder) return Array.AsReadOnly(items);
+        // With two tracks, preserving the first cycle's order is the only way
+        // to avoid immediately repeating the final track at every boundary.
+        if (items.Length == 2) cycle = 0;
+        var shuffled = Shuffle(items, occurrenceKey, cycle);
+        if (items.Length > 2 && cycle > 0 && shuffled[0].Id == Shuffle(items, occurrenceKey, cycle - 1)[^1].Id)
+            (shuffled[0], shuffled[1]) = (shuffled[1], shuffled[0]);
+        return Array.AsReadOnly(shuffled);
+    }
+
+    private static MediaItem[] Shuffle(MediaItem[] items, string occurrenceKey, long cycle)
+    {
         var prefix = occurrenceKey + "\n" + cycle.ToString(CultureInfo.InvariantCulture) + "\n";
-        var shuffled = items.Select(item => (Item: item,
+        return items.Select(item => (Item: item,
                 Key: Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(prefix + item.Id)))))
             .OrderBy(pair => pair.Key, StringComparer.Ordinal).ThenBy(pair => pair.Item.Id, StringComparer.Ordinal)
             .Select(pair => pair.Item).ToArray();
-        return Array.AsReadOnly(shuffled);
     }
 }
