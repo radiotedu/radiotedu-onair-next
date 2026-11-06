@@ -20,6 +20,7 @@ internal static partial class ProcessingChecks
         await PrivateCueChecksAsync(ffmpeg,root,result);
         await ProgrammeChecksAsync(ffmpeg,root,result);
         await ProgrammeLoopbackChecksAsync(ffmpeg,icecastRoot,root,result);
+        await CrossfadeLoopbackChecksAsync(ffmpeg,icecastRoot,root,result);
         Check(result,ChildProcess.ActiveProcesses.Count==0,"Processing qualification closes every owned decoder/validation worker.");
         result.Details["scope"]="Synthetic final-mix limiting, prepared/audible EOF, automatic branding PCM/order, private cue isolation, timed programme PCM transitions, Stop/Skip/recovery ownership, and bounded asynchronous audit only. No physical audio output, browser/mouse cue, mic/recording, encoded worst-case headroom, HE-AAC/all18 or production acceptance.";
     }
@@ -136,11 +137,11 @@ internal static partial class ProcessingChecks
         public OutputSnapshot Snapshot()=>new("processing-sink","Ready",0,0,Frames,0,0,null,null);public ValueTask DisposeAsync()=>ValueTask.CompletedTask;
     }
     private static float FirstSample(float amplitude)=>(float)(amplitude*Math.Sin(.31));
-    private static MediaItem Fixture(string root,string name,int frames,float amplitude,ContentKind kind=ContentKind.Music)
+    private static MediaItem Fixture(string root,string name,int frames,float amplitude,ContentKind kind=ContentKind.Music,double frequency=440)
     {
         var path=Path.Combine(root,name+".wav");using var writer=new BinaryWriter(File.Create(path));
         writer.Write("RIFF"u8);writer.Write(36+frames*8);writer.Write("WAVEfmt "u8);writer.Write(16);writer.Write((short)3);writer.Write((short)2);writer.Write(48000);writer.Write(384000);writer.Write((short)8);writer.Write((short)32);writer.Write("data"u8);writer.Write(frames*8);
-        for(var i=0;i<frames;i++){var sample=(float)(amplitude*Math.Sin(2*Math.PI*440*i/48000+.31));writer.Write(sample);writer.Write(sample*.75f);}
+        for(var i=0;i<frames;i++){var sample=(float)(amplitude*Math.Sin(2*Math.PI*frequency*i/48000+.31));writer.Write(sample);writer.Write(sample*.75f);}
         return new(name,path,"Synthetic engineering signal",name,kind,(double)frames/48000);
     }
 }

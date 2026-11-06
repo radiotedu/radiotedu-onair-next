@@ -107,4 +107,17 @@ public sealed class CrossfadeStationIntegrationTests
         Assert.Equal(2,starts.Length);Assert.Equal(168000,starts[1].SamplePosition);
         Assert.Equal(1,output.Starts);Assert.Equal(360000,output.Frames);Assert.True(output.Left.All(x=>x>.05f));
     }
+
+    [Fact]
+    public async Task OverlappingLoudMusicStillPassesTheFinalTruePeakLimiter()
+    {
+        var db=Database();await using var journal=new EventJournal(db);var output=new Output();var songs=new[]{Song("a"),Song("b")};
+        await using var station=new StationEngine("unused",new("station",songs,[],Repeat:false,CrossfadeSeconds:.5),journal,[output],null,null,
+            _=>new Decoder(.7f),()=>Task.CompletedTask);
+        await station.StartAsync();await station.Completion.WaitAsync(TimeSpan.FromSeconds(18));
+        var stereo=new float[output.Left.Count*2];for(var i=0;i<output.Left.Count;i++){stereo[2*i]=output.Left[i];stereo[2*i+1]=output.Left[i];}
+        var meter=new StereoLoudnessMeter48k(TimeSpan.FromSeconds(10));meter.Feed(stereo);meter.Finish();
+        Assert.True(meter.Read().TruePeakDbtp<=-1.499);Assert.True(station.Snapshot().Limiter?.MaximumGainReductionDb>1);
+        Assert.Equal(1,output.Starts);Assert.Equal(360000,output.Frames);
+    }
 }
