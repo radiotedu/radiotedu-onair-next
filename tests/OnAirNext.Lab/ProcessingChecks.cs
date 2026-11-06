@@ -22,7 +22,7 @@ internal static partial class ProcessingChecks
         await ProgrammeLoopbackChecksAsync(ffmpeg,icecastRoot,root,result);
         await CrossfadeLoopbackChecksAsync(ffmpeg,icecastRoot,root,result);
         Check(result,ChildProcess.ActiveProcesses.Count==0,"Processing qualification closes every owned decoder/validation worker.");
-        result.Details["scope"]="Synthetic final-mix limiting, prepared/audible EOF, automatic branding PCM/order, private cue isolation, timed programme PCM transitions, Stop/Skip/recovery ownership, and bounded asynchronous audit only. No physical audio output, browser/mouse cue, mic/recording, encoded worst-case headroom, HE-AAC/all18 or production acceptance.";
+        result.Details["scope"]="Synthetic final-mix limiting, prepared/audible EOF, branding, private cue isolation, timed programme and music overlap transitions, Stop/Skip/recovery ownership, bounded audit, and two isolated encoded listener paths. No physical audio output, browser/mouse cue, mic/recording, encoded worst-case headroom, HE-AAC/all18 or production acceptance.";
     }
     private static async Task FiniteAsync(string ffmpeg,string root,CaseResult result,MediaItem[] items)
     {
