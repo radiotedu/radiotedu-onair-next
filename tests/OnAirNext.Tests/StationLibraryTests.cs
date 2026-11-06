@@ -106,6 +106,26 @@ public sealed class StationLibraryTests
     }
 
     [Fact]
+    public async Task ANewFileJoinsTheLiveRotationWithoutAnOperatorRescan()
+    {
+        var root = Root(); var music = Path.Combine(root, "music"); Directory.CreateDirectory(music);
+        await File.WriteAllTextAsync(Path.Combine(music, "first.wav"), "first fixture");
+        await using var journal = new EventJournal(Path.Combine(root, "catalog.db"));
+        await journal.InitializeDesiredStateAsync(Settings);
+        await using var library = new StationLibrary(journal, "unused", root, ["a"],
+            (path, _) => Task.FromResult(new AudioMetadata("Artist", Path.GetFileNameWithoutExtension(path), 10)));
+        await library.InitializeAsync(); await library.SetRootAsync("a", music, "folder");
+        var planner = library.Planner(Settings)!;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+        while (planner.AvailableItems != 1) await Task.Delay(200, deadline.Token);
+        await File.WriteAllTextAsync(Path.Combine(music, "added.wav"), "new fixture");
+        // Do not signal Wake or call Rescan: the ordinary background worker must discover it.
+        while (planner.AvailableItems != 2) await Task.Delay(200, deadline.Token);
+        var titles = Enumerable.Range(0, 2).Select(i => planner.Select(i).Item.Title).ToHashSet(StringComparer.Ordinal);
+        Assert.Equal(new[] { "added", "first" }, titles.Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task RescanRetriesARejectedFileWithoutRequiringAFileEdit()
     {
         var root = Root(); var music = Path.Combine(root, "music"); Directory.CreateDirectory(music);

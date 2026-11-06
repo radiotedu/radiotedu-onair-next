@@ -46,6 +46,12 @@ internal static class NormalizationChecks
             details.Add(new{Name=name,Source=measured,Gain=gain,Before=before,After=after,MaximumPcmError=maximumError});
             if(name=="target")target=item;
         }
+        var tagged=Path.Combine(root,"uppercase-tags.flac");
+        await ChildProcess.CaptureAsync(ffmpeg,"-hide_banner","-v","error","-nostdin","-i",Path.Combine(root,"target.wav"),
+            "-metadata","ARTIST=İzmir Test Artist","-metadata","TITLE=Complete Track Title","-c:a","flac",tagged);
+        var taggedMetadata=await probe.VerifyAsync(tagged,CancellationToken.None);
+        Check(result,taggedMetadata.Artist=="İzmir Test Artist"&&taggedMetadata.Title=="Complete Track Title",
+            "Real FLAC uppercase embedded artist and title are read without falling back to the filename.");
         result.Details["sources"]=details;
         await using(var journal=new EventJournal(Path.Combine(root,"playback.db")))
         {
