@@ -30,15 +30,15 @@ public sealed record ProgrammeRuntimeView(string StationId, DateTimeOffset Obser
             if (count == 0) throw new InvalidOperationException("The scheduled music window is empty.");
             var cycle = ProgrammeMusicOrder.PrepareCycle(programme.Items, programme.Draft.Order, occurrence.Key, position / count);
             var item = cycle[(int)(position % count)];
-            return new(occurrence, new(item, HoldsRotation: true, ProgrammeMusicKey: occurrence.Key, ProgrammeMusicPosition: position),
+            return new(occurrence, new(item, HoldsRotation: true, ProgrammeMusicKey: occurrence.Key, ProgrammeMusicPosition: position,
+                    SuppressStationBranding: programme.Draft.SuppressStationBranding),
                 programme.Draft.DisplayText, programme.Draft.SuppressStationBranding);
         }
         ProgrammeAudioCue Insertion(CalendarOccurrence occurrence)
         {
             var programme = byId[occurrence.RuleId].Programme;
-            if (programme.Items.Count != 1 || programme.Items[0].Kind != ContentKind.Program)
-                throw new InvalidOperationException("A timed recording must resolve to one prepared programme asset.");
-            return new(occurrence, new(programme.Items[0], HoldsRotation: true, ScheduledOccurrenceKey: occurrence.Key),
+            var recording = ProgrammeInsertionOrder.Choose(programme.Items, occurrence.Key);
+            return new(occurrence, new(recording, HoldsRotation: true, ScheduledOccurrenceKey: occurrence.Key),
                 selection.ActiveProgramme?.DisplayText ?? programme.Draft.DisplayText,
                 selection.ActiveProgramme?.SuppressStationBranding == true);
         }

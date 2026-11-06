@@ -21,9 +21,7 @@ public sealed record ScheduledProgrammePlan(PlayoutSelection? Selection, string?
         {
             if (occurrence is null || occurrence.Kind != CalendarRuleKind.TimedSweeper) return null;
             var media = byId[occurrence.RuleId].Programme.Items;
-            if (media.Count != 1 || media[0].Kind != ContentKind.Program)
-                throw new InvalidOperationException("A timed recording must resolve to one prepared programme asset.");
-            return new(media[0], HoldsRotation: true, ScheduledOccurrenceKey: occurrence.Key);
+            return new(ProgrammeInsertionOrder.Choose(media, occurrence.Key), HoldsRotation: true, ScheduledOccurrenceKey: occurrence.Key);
         }
         var insertion = NextInsertion(selected.InsertionOccurrence);
         if (insertion is not null)
@@ -36,7 +34,8 @@ public sealed record ScheduledProgrammePlan(PlayoutSelection? Selection, string?
         var cycle = musicPosition / items.Count;
         var offset = (int)(musicPosition % items.Count);
         var music = ProgrammeMusicOrder.PrepareCycle(items, programme.Order, occurrence.Key, cycle)[offset];
-        return new(new(music, HoldsRotation: true, ProgrammeMusicKey: occurrence.Key, ProgrammeMusicPosition: musicPosition),
+        return new(new(music, HoldsRotation: true, ProgrammeMusicKey: occurrence.Key, ProgrammeMusicPosition: musicPosition,
+                SuppressStationBranding: programme.SuppressStationBranding),
             text, occurrence.Key, programme.SuppressStationBranding,
             selected.NextOccurrence, NextInsertion(selected.NextOccurrence));
     }

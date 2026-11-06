@@ -47,13 +47,14 @@ public sealed partial class StationEngine
             _index+(between&&type!="interrupted"&&_selection?.AdvancesRotation==true?1:0),between?null:_selection?.Item,_occurrence,
             between?0:_itemSamples,position,!between&&_announced,default,between?null:_selection?.QueueEntryId,_sessionId,_previousOccurrence,
             !between&&_selection?.HoldsRotation==true,between?null:_selection?.ScheduledOccurrenceKey,
-            between?null:_selection?.ProgrammeMusicKey,between?null:_selection?.ProgrammeMusicPosition);
+            between?null:_selection?.ProgrammeMusicKey,between?null:_selection?.ProgrammeMusicPosition,
+            !between&&_selection?.SuppressStationBranding==true);
         PrepareBoundaryFor(type,position,detail,cursor,checkpoint);
     }
     private void PrepareBoundaryFor(string type,long position,string detail,Cursor cursor,PlayoutCheckpoint checkpoint)
     {
         if(_boundaries.Count>=MaximumPreparedEntries)throw new InvalidOperationException("Prepared event ownership exceeded its bounded window.");
-        if(cursor.Selection.ProgrammeMusicKey is null)
+        if(cursor.Selection.ProgrammeMusicKey is null||!cursor.Selection.SuppressStationBranding)
             _preparedBranding=_preparedBranding.Project(cursor.Selection.Item.Kind,type);
         _boundaries.Enqueue(new(type,position,detail,cursor,checkpoint));
     }
@@ -68,7 +69,8 @@ public sealed partial class StationEngine
                 item.Id,item.Artist,item.Title,item.Kind,_anchor.AddSeconds((double)boundary.Position/AudioFormat.SampleRate),
                 boundary.Position,boundary.Detail,cursor.Selection.QueueEntryId,cursor.PreviousOccurrence,
                 SourceGain:SourceNormalization.Decide(item.Loudness),ScheduledOccurrenceKey:cursor.Selection.ScheduledOccurrenceKey,
-                ProgrammeMusicKey:cursor.Selection.ProgrammeMusicKey,ProgrammeMusicPosition:cursor.Selection.ProgrammeMusicPosition);
+                ProgrammeMusicKey:cursor.Selection.ProgrammeMusicKey,ProgrammeMusicPosition:cursor.Selection.ProgrammeMusicPosition,
+                SuppressStationBranding:cursor.Selection.SuppressStationBranding);
             var checkpoint=boundary.Checkpoint with{SavedAtUtc=DateTimeOffset.UtcNow};
             var terminal=boundary.Type is "ended" or "skipped" or "failed" or "decode_failed" or "queue_deferred" or "interrupted";
             QueueAudit(()=>_journal.AppendAsync(entry,checkpoint),terminal?cursor.Selection.QueueEntryId:null);
@@ -113,7 +115,7 @@ public sealed partial class StationEngine
         var cursor=Volatile.Read(ref _audible);
         if(cursor is not null)return new(_settings.Id,state,cursor.RotationIndex,cursor.Selection.Item,cursor.Occurrence,
             cursor.ItemSamples,_samples,true,DateTimeOffset.UtcNow,cursor.Selection.QueueEntryId,_sessionId,cursor.PreviousOccurrence,cursor.Selection.HoldsRotation,cursor.Selection.ScheduledOccurrenceKey,
-            cursor.Selection.ProgrammeMusicKey,cursor.Selection.ProgrammeMusicPosition);
+            cursor.Selection.ProgrammeMusicKey,cursor.Selection.ProgrammeMusicPosition,cursor.Selection.SuppressStationBranding);
         return (_lastCheckpoint??new(_settings.Id,"BetweenItems",_index,null,"",0,_samples,false,default,SessionId:_sessionId))
             with{ProgramSamples=_samples,SavedAtUtc=DateTimeOffset.UtcNow};
     }
@@ -121,11 +123,12 @@ public sealed partial class StationEngine
     {
         var cursor=Volatile.Read(ref _audible);if(cursor is null)return;
         var item=cursor.Selection.Item;var checkpoint=AudibleCheckpoint(type=="interrupted"?"Stopped":"BetweenItems");
-        if(type!="interrupted")checkpoint=checkpoint with{RotationIndex=cursor.RotationIndex+(cursor.Selection.AdvancesRotation?1:0),Item=null,ItemSamples=0,Announced=false,QueueEntryId=null,HoldsRotation=false,ScheduledOccurrenceKey=null,ProgrammeMusicKey=null,ProgrammeMusicPosition=null};
+        if(type!="interrupted")checkpoint=checkpoint with{RotationIndex=cursor.RotationIndex+(cursor.Selection.AdvancesRotation?1:0),Item=null,ItemSamples=0,Announced=false,QueueEntryId=null,HoldsRotation=false,ScheduledOccurrenceKey=null,ProgrammeMusicKey=null,ProgrammeMusicPosition=null,SuppressStationBranding=false};
         var entry=new PlaybackEvent(Guid.NewGuid().ToString("N"),cursor.Occurrence,_settings.Id,type,item.Id,item.Artist,item.Title,
             item.Kind,_anchor.AddSeconds((double)_samples/AudioFormat.SampleRate),_samples,detail,cursor.Selection.QueueEntryId,cursor.PreviousOccurrence,
             SourceGain:SourceNormalization.Decide(item.Loudness),ScheduledOccurrenceKey:cursor.Selection.ScheduledOccurrenceKey,
-            ProgrammeMusicKey:cursor.Selection.ProgrammeMusicKey,ProgrammeMusicPosition:cursor.Selection.ProgrammeMusicPosition);
+            ProgrammeMusicKey:cursor.Selection.ProgrammeMusicKey,ProgrammeMusicPosition:cursor.Selection.ProgrammeMusicPosition,
+            SuppressStationBranding:cursor.Selection.SuppressStationBranding);
         QueueAudit(()=>_journal.AppendAsync(entry,checkpoint),type=="interrupted"?null:cursor.Selection.QueueEntryId);_lastCheckpoint=checkpoint;
     }
     private void QueueAudit(Func<Task> submit,string? releaseQueueEntry=null)

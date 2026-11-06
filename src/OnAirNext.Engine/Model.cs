@@ -189,13 +189,15 @@ public sealed record PlaybackEvent(string EventId, string OccurrenceId, string S
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] SourceGain? SourceGain = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ScheduledOccurrenceKey = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ProgrammeMusicKey = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? ProgrammeMusicPosition = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? ProgrammeMusicPosition = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool SuppressStationBranding = false);
 public sealed record PlayoutSelection(MediaItem Item, string? QueueEntryId = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HoldsRotation = false,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? PreviousOccurrenceId = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ScheduledOccurrenceKey = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ProgrammeMusicKey = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? ProgrammeMusicPosition = null)
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? ProgrammeMusicPosition = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool SuppressStationBranding = false)
 {
     [JsonIgnore] public bool AdvancesRotation => QueueEntryId is null && !HoldsRotation;
 }
@@ -218,7 +220,8 @@ public sealed record PlayoutCheckpoint(string StationId, string State, int Rotat
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HoldsRotation = false,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ScheduledOccurrenceKey = null,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ProgrammeMusicKey = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? ProgrammeMusicPosition = null);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? ProgrammeMusicPosition = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool SuppressStationBranding = false);
 public sealed record OutputSnapshot(string Id, string State, long EncoderStarts, long Connections, long FramesWritten,
     long DroppedBlocks, int QueuedBlocks, int? EncoderPid, string? LastError,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] MetadataSnapshot? Metadata = null);

@@ -49,8 +49,8 @@ public sealed partial class StationEngine : IStationSession
     public Task Completion=>_run??Task.CompletedTask;
 
     public StationEngine(string ffmpeg,StationSettings settings,EventJournal journal,IReadOnlyList<IProgramOutput>? outputs=null,IPlayoutPlanner? planner=null,
-        IBrandingSource? branding=null,ProgrammeRuntimeCoordinator? programmes=null)
-        : this(ffmpeg,settings,journal,outputs,planner,branding,null,null,programmes) { }
+        IBrandingSource? branding=null,ProgrammeRuntimeCoordinator? programmes=null,TimeProvider? clock=null)
+        : this(ffmpeg,settings,journal,outputs,planner,branding,null,null,programmes,clock is null?null:clock.GetUtcNow) { }
     internal StationEngine(string ffmpeg,StationSettings settings,EventJournal journal,IReadOnlyList<IProgramOutput>? outputs,IPlayoutPlanner? planner,
         IBrandingSource? branding,Func<MediaItem,IFrameDecoder>? decoderFactory,Func<Task>? validateEncoders=null,ProgrammeRuntimeCoordinator? programmes=null,
         Func<DateTimeOffset>? utcNow=null)
@@ -125,7 +125,8 @@ public sealed partial class StationEngine : IStationSession
                 if(saved.State is "RestartPending" or "Stopped"&&saved.Item is not null)
                 {
                     _selection=new(saved.Item,saved.QueueEntryId,saved.HoldsRotation,ScheduledOccurrenceKey:saved.ScheduledOccurrenceKey,
-                        ProgrammeMusicKey:saved.ProgrammeMusicKey,ProgrammeMusicPosition:saved.ProgrammeMusicPosition);_previousOccurrence=saved.Announced?saved.OccurrenceId:saved.PreviousOccurrenceId;
+                        ProgrammeMusicKey:saved.ProgrammeMusicKey,ProgrammeMusicPosition:saved.ProgrammeMusicPosition,
+                        SuppressStationBranding:saved.SuppressStationBranding);_previousOccurrence=saved.Announced?saved.OccurrenceId:saved.PreviousOccurrenceId;
                     _itemSamples=0;_announced=false;_recovered=true;
                 }
             }

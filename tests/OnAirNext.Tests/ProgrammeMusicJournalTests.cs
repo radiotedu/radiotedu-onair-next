@@ -123,4 +123,17 @@ public sealed class ProgrammeMusicJournalTests
         await journal.AppendAsync(Event(key, 1, Id(), "started"));
         Assert.Equal(2, (await journal.ProgrammeMusicProgressAsync(key, "4")).NextPosition);
     }
+
+    [Fact]
+    public async Task SuppressedSpecialMusicPreservesBrandingCadenceWhileOptionalBrandingCanAdvanceIt()
+    {
+        var key = Key(); var first = Id(); var second = Id();
+        await using var journal = new EventJournal(Database()); await journal.InitializeProgrammePlaybackAsync();
+        await journal.AppendAsync(Event(key, 0, first, "started") with { SuppressStationBranding = true });
+        await journal.AppendAsync(Event(key, 0, first, "ended") with { SuppressStationBranding = true });
+        Assert.Equal(0, (await journal.BrandingProgressAsync("4")).CompletedMusic);
+        await journal.AppendAsync(Event(key, 1, second, "started"));
+        await journal.AppendAsync(Event(key, 1, second, "ended"));
+        Assert.Equal(1, (await journal.BrandingProgressAsync("4")).CompletedMusic);
+    }
 }

@@ -51,7 +51,15 @@ public sealed class ProgrammeRuntimeCoordinator : IAsyncDisposable
             !snapshot.Stations.TryGetValue(station, out var view)) return false;
         var music = ActiveMusic(view, now);
         if (checkpoint.ProgrammeMusicKey is { } musicKey)
-            return music?.Occurrence.Key == musicKey && checkpoint.Item.Kind == ContentKind.Music && checkpoint.ProgrammeMusicPosition is >= 0;
+        {
+            if (music?.Occurrence.Key != musicKey || checkpoint.Item.Kind != ContentKind.Music || checkpoint.ProgrammeMusicPosition is not { } position || position < 0)
+                return false;
+            var programme = _publications.FirstOrDefault(p => p.Active && p.Id == music.Occurrence.RuleId &&
+                p.Programme.Draft.Rule.Version == music.Occurrence.RuleVersion)?.Programme;
+            if (programme is null || programme.Items.Count == 0) return false;
+            var cycle = ProgrammeMusicOrder.PrepareCycle(programme.Items, programme.Draft.Order, musicKey, position / programme.Items.Count);
+            return cycle[(int)(position % programme.Items.Count)] == checkpoint.Item;
+        }
         if (checkpoint.ScheduledOccurrenceKey is not { } key || checkpoint.Item.Kind is not (ContentKind.Program or ContentKind.Sweeper)) return false;
         var parts = key.Split('/');
         if (parts.Length != 4 || parts[2] != station || !long.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var version) ||
@@ -65,6 +73,7 @@ public sealed class ProgrammeRuntimeCoordinator : IAsyncDisposable
         var occurrence = ProgrammeCalendar.Forecast([publication.Programme.Draft.Rule with { Enabled = true }], _stations,
             due, TimeSpan.FromSeconds(1)).Occurrences.SingleOrDefault(o => o.Key == key);
         if (occurrence is null) return false;
+        if (ProgrammeInsertionOrder.Choose(publication.Programme.Items, key) != checkpoint.Item) return false;
         if (now < occurrence.EndsAtUtc) return true;
         // An interrupted recording may finish after its admission window, but
         // must not unexpectedly replay much later or after its owning day ends.

@@ -118,7 +118,8 @@ public sealed partial class StationEngine
         // Programmes and advertisements retain their explicit operator priority.
         // There must be ordinary music to return to; branding cannot keep an
         // empty or exhausted library on air by repeating station identifiers.
-        if(ordinary is null||ordinary.Item.Kind!=ContentKind.Music||ordinary.HoldsRotation)return ordinary;
+        if(ordinary is null||ordinary.Item.Kind!=ContentKind.Music||ordinary.HoldsRotation&&
+            (ordinary.ProgrammeMusicKey is null||ordinary.SuppressStationBranding))return ordinary;
         var pool=_branding?.Snapshot();
         if(!ReferenceEquals(pool,_brandingPool)){_brandingPool=pool;_failedBrandingAssets.Clear();}
         var decision=pool?.DecideProjected(progress,_failedBrandingAssets);
@@ -159,12 +160,13 @@ public sealed partial class StationEngine
         var normal=TrySelectNormal(NextRotationIndex);
         var programme=NextProgrammeMusic();
         var ordinary=programme??normal;
-        var projected=assumeCurrentCompleted&&_selection is not null&&_selection.ProgrammeMusicKey is null
+        var projected=assumeCurrentCompleted&&_selection is not null&&
+            (_selection.ProgrammeMusicKey is null||!_selection.SuppressStationBranding)
             ?_preparedBranding.Project(_selection.Item.Kind,"ended"):_preparedBranding;
         var desired=ChooseBranding(ordinary,projected);
         var second=IsBranding(desired)?ChooseBranding(ordinary,projected.Project(desired!.Item.Kind,"ended")):null;
         if(!IsBranding(second))second=null;
-        var fallback=programme is not null?normal:IsBranding(desired)?ordinary:null;
+        var fallback=IsBranding(desired)?ordinary:programme is not null?normal:null;
         var retained=new List<PreparedSource>(3);
         if(_nextSource is not null)retained.Add(_nextSource);
         if(_secondBrand is not null)retained.Add(_secondBrand);

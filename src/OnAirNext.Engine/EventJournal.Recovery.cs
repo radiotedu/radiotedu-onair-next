@@ -45,10 +45,10 @@ public sealed partial class EventJournal
                 "The scheduled item is no longer eligible or its programme is unavailable. Normal rotation remains at its saved position.",
                 PreviousOccurrenceId: saved.PreviousOccurrenceId, TimingQuality: "last_committed_checkpoint",
                 ScheduledOccurrenceKey: saved.ScheduledOccurrenceKey, ProgrammeMusicKey: saved.ProgrammeMusicKey,
-                ProgrammeMusicPosition: saved.ProgrammeMusicPosition));
+                ProgrammeMusicPosition: saved.ProgrammeMusicPosition, SuppressStationBranding: saved.SuppressStationBranding));
         ConsumeSkips(connection, transaction, station, saved.OccurrenceId);
         var next = saved with { State = "BetweenItems", Item = null, ItemSamples = 0, Announced = false, HoldsRotation = false,
-            ScheduledOccurrenceKey = null, ProgrammeMusicKey = null, ProgrammeMusicPosition = null };
+            ScheduledOccurrenceKey = null, ProgrammeMusicKey = null, ProgrammeMusicPosition = null, SuppressStationBranding = false };
         WriteCheckpoint(connection, transaction, next); return next;
     });
 
@@ -152,6 +152,7 @@ public sealed partial class EventJournal
             (saved.HoldsRotation && (saved.Item is null || saved.QueueEntryId is not null)) ||
             (saved.ScheduledOccurrenceKey is not null && (saved.Item is null || saved.QueueEntryId is not null || !saved.HoldsRotation || saved.Item.Kind is not (ContentKind.Program or ContentKind.Sweeper))) ||
             ((saved.ProgrammeMusicKey is null) != (saved.ProgrammeMusicPosition is null)) ||
+            (saved.SuppressStationBranding && saved.ProgrammeMusicKey is null) ||
             (saved.ProgrammeMusicKey is not null && (saved.Item is null || saved.Item.Kind != ContentKind.Music || saved.QueueEntryId is not null || !saved.HoldsRotation ||
                 saved.ScheduledOccurrenceKey is not null || saved.ProgrammeMusicPosition is < 0 or long.MaxValue)) ||
             (saved.Announced && (saved.Item is null || string.IsNullOrWhiteSpace(saved.OccurrenceId))))
@@ -168,7 +169,7 @@ public sealed partial class EventJournal
                 stationId, "skipped", item.Id, item.Artist, item.Title, item.Kind, saved.SavedAtUtc, saved.ProgramSamples,
                 "A durably accepted Skip was recovered. Playback after the last checkpoint is unknown.",
                 saved.QueueEntryId, saved.PreviousOccurrenceId, "last_committed_checkpoint", ScheduledOccurrenceKey:saved.ScheduledOccurrenceKey,
-                ProgrammeMusicKey:saved.ProgrammeMusicKey, ProgrammeMusicPosition:saved.ProgrammeMusicPosition);
+                ProgrammeMusicKey:saved.ProgrammeMusicKey, ProgrammeMusicPosition:saved.ProgrammeMusicPosition, SuppressStationBranding:saved.SuppressStationBranding);
             if (WriteEvent(connection, transaction, recoveredSkip)) { RecordBrandingAttempt(connection, transaction, recoveredSkip); RecordScheduledAttempt(connection, transaction, recoveredSkip); RecordProgrammeMusicAttempt(connection, transaction, recoveredSkip); }
             RecordQueueAttempt(connection, transaction, recoveredSkip);
             ConsumeSkips(connection, transaction, stationId, saved.OccurrenceId);
@@ -185,7 +186,7 @@ public sealed partial class EventJournal
             }
             var skipped = saved with { State = "BetweenItems", RotationIndex = saved.RotationIndex + (saved.QueueEntryId is null && !saved.HoldsRotation ? 1 : 0),
                 Item = null, ItemSamples = 0, Announced = false, QueueEntryId = null, HoldsRotation = false, ScheduledOccurrenceKey = null,
-                ProgrammeMusicKey = null, ProgrammeMusicPosition = null };
+                ProgrammeMusicKey = null, ProgrammeMusicPosition = null, SuppressStationBranding = false };
             WriteCheckpoint(connection, transaction, skipped);
             return skipped;
         }
@@ -198,7 +199,7 @@ public sealed partial class EventJournal
                 item.Artist, item.Title, item.Kind, saved.SavedAtUtc, saved.ProgramSamples,
                 "Process interruption detected on restart. Duration is a lower bound from the last committed checkpoint; the uncommitted tail is unknown.",
                 saved.QueueEntryId, saved.PreviousOccurrenceId, "last_committed_checkpoint", ScheduledOccurrenceKey:saved.ScheduledOccurrenceKey,
-                ProgrammeMusicKey:saved.ProgrammeMusicKey, ProgrammeMusicPosition:saved.ProgrammeMusicPosition);
+                ProgrammeMusicKey:saved.ProgrammeMusicKey, ProgrammeMusicPosition:saved.ProgrammeMusicPosition, SuppressStationBranding:saved.SuppressStationBranding);
             if (WriteEvent(connection, transaction, interrupted)) { RecordScheduledAttempt(connection, transaction, interrupted); RecordProgrammeMusicAttempt(connection, transaction, interrupted); }
             RecordQueueAttempt(connection, transaction, interrupted);
         }

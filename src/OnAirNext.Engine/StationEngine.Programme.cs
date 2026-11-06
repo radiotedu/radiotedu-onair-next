@@ -34,7 +34,8 @@ public sealed partial class StationEngine
     private PlayoutSelection? NextProgrammeMusic()
     {
         var currentSelection = _selection;
-        if (currentSelection is null || currentSelection.ProgrammeMusicKey is null && currentSelection.ScheduledOccurrenceKey is null) return null;
+        if (currentSelection is null || currentSelection.ProgrammeMusicKey is null && currentSelection.ScheduledOccurrenceKey is null &&
+            !(IsBranding(currentSelection) && _currentProgrammeWindow is not null)) return null;
         var now = ProgrammeTime(_preparedSamples); var view = ProgrammeView(now);
         var music = view?.Music;
         if (music is null || music.Occurrence.DueAtUtc > now || now >= music.Occurrence.EndsAtUtc) return null;
@@ -85,7 +86,8 @@ public sealed partial class StationEngine
         var failed = new PlaybackEvent(Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N"), _settings.Id,
             "decode_failed", item.Id, item.Artist, item.Title, item.Kind, ProgrammeTime(_samples), _samples,
             "A prepared scheduled music source failed before its first sample; ordinary playback continues.",
-            SourceGain: SourceNormalization.Decide(item.Loudness), ProgrammeMusicKey: key, ProgrammeMusicPosition: position);
+            SourceGain: SourceNormalization.Decide(item.Loudness), ProgrammeMusicKey: key, ProgrammeMusicPosition: position,
+            SuppressStationBranding: selection.SuppressStationBranding);
         QueueAudit(() => _journal.AppendAsync(failed, AudibleCheckpoint("Playing")));
     }
 
@@ -129,6 +131,7 @@ public sealed partial class StationEngine
         var active = view.Music;
         if (active is not null && _selection.ProgrammeMusicKey == active.Occurrence.Key) active = null;
         if (_selection.ScheduledOccurrenceKey is not null) active = null;
+        if (active is { SuppressStationBranding: false } && IsBranding(_selection) && _currentProgrammeWindow?.Key == active.Occurrence.Key) active = null;
         if (active?.Selection.ProgrammeMusicKey is { } key && active.Selection.ProgrammeMusicPosition is { } position &&
             _failedProgrammeTracks.Contains((key, position))) active = view.FollowingMusic;
         if (_programmeCue is { } failedCue && now >= failedCue.Occurrence.DueAtUtc && FailedProgrammeSource(_programmeSource))

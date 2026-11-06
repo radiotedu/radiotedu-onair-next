@@ -179,7 +179,7 @@ public sealed partial class EventJournal : IAsyncDisposable
             RecordBrandingAttempt(connection, transaction, entry);
             RecordScheduledAttempt(connection, transaction, entry);
             RecordProgrammeMusicAttempt(connection, transaction, entry);
-            if (entry.Type == "ended" && entry.ProgrammeMusicKey is null) CompleteCadence(connection, transaction, entry);
+            if (entry.Type == "ended" && (entry.ProgrammeMusicKey is null || !entry.SuppressStationBranding)) CompleteCadence(connection, transaction, entry);
             if (entry.Type is "skipped" or "ended" or "failed" or "decode_failed")
                 ConsumeSkips(connection, transaction, entry.StationId, entry.OccurrenceId);
             if (entry.QueueEntryId is not null)

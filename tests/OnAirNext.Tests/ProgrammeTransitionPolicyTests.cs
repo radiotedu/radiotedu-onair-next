@@ -54,4 +54,17 @@ public sealed class ProgrammeTransitionPolicyTests
             new HashSet<string>(), _ => true);
         Assert.Equal(ProgrammeTransitionKind.Ordinary, decision.Kind);
     }
+
+    [Fact]
+    public void AllowedStationBrandingFinishesInsideTheSpecialWindow()
+    {
+        var window = Occurrence(CalendarRuleKind.SpecialDay, Local(10), Local(11));
+        var cue = new ProgrammeAudioCue(window, new(new("one", "one.opus", "", "One"), HoldsRotation: true,
+            ProgrammeMusicKey: window.Key, ProgrammeMusicPosition: 0), null, false);
+        var view = new ProgrammeRuntimeView("4", Local(10), cue, cue, null, null);
+        var jingle = new PlayoutSelection(new("jingle", "jingle.opus", "", "ID", ContentKind.Jingle), HoldsRotation: true);
+        var decision = ProgrammeTransitionPolicy.Decide(view, Local(10, 1), jingle, window, false,
+            new HashSet<string>(), _ => true);
+        Assert.Equal(ProgrammeTransitionKind.Continue, decision.Kind);
+    }
 }

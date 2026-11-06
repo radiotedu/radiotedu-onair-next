@@ -40,6 +40,11 @@ public static class ProgrammeTransitionPolicy
             (currentFinished || due.Occurrence.StartPolicy == CalendarStartPolicy.FadeAtTime))
             return Prepared(due, currentFinished, sourceReady);
 
+        if (!currentFinished && current is { HoldsRotation: true, QueueEntryId: null } &&
+            (current.Item.Kind is ContentKind.Jingle or ContentKind.Sweeper) && music is { SuppressStationBranding: false } &&
+            currentMusicWindow?.Key == music.Occurrence.Key)
+            return new(ProgrammeTransitionKind.Continue);
+
         if (music is not null)
         {
             if (current?.ProgrammeMusicKey == music.Occurrence.Key)

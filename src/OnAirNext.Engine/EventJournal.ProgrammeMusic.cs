@@ -25,7 +25,11 @@ public sealed partial class EventJournal
     // simultaneously audible during a crossfade, including across a crash.
     private static void RecordProgrammeMusicAttempt(SqliteConnection connection, SqliteTransaction transaction, PlaybackEvent entry)
     {
-        if (entry.ProgrammeMusicKey is null && entry.ProgrammeMusicPosition is null) return;
+        if (entry.ProgrammeMusicKey is null && entry.ProgrammeMusicPosition is null)
+        {
+            if (entry.SuppressStationBranding) throw new ArgumentException("Only scheduled music may suppress station branding.");
+            return;
+        }
         if (entry.ProgrammeMusicKey is not { } key || entry.ProgrammeMusicPosition is not { } position ||
             position is < 0 or long.MaxValue || entry.Kind != ContentKind.Music || entry.QueueEntryId is not null ||
             entry.ScheduledOccurrenceKey is not null || string.IsNullOrWhiteSpace(entry.OccurrenceId) ||
