@@ -5,6 +5,7 @@ using Xunit;
 
 namespace OnAirNext.Tests;
 
+[Collection("Crossfade realtime playback")]
 public sealed class DecoderPreparationTests
 {
     private static readonly MediaItem Item = new("test","unused.wav","Artist","Song");
