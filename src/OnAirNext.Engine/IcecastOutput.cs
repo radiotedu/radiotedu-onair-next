@@ -63,13 +63,15 @@ public sealed class IcecastOutput : IProgramOutput
 
     private async Task RunAsync()
     {
-        var failures = 0;
+        var reconnect = new OutputReconnectBackoff();
         while (!_stop.IsCancellationRequested)
         {
             DrainStale();
             using var session = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
             Volatile.Write(ref _session, session);
             Process? encoder = null;
+            long? connectedAt = null;
+            TimeSpan? connectedFor = null;
             Task? feed = null, drain = null;
             using var client = new TcpClient { NoDelay = true, SendBufferSize = 8192 };
             using var pcm = new CodecPipe(System.IO.Pipes.PipeDirection.Out);
@@ -90,6 +92,7 @@ public sealed class IcecastOutput : IProgramOutput
                 Interlocked.Increment(ref _starts);
                 var errors = ChildProcess.DrainErrorAsync(encoder);
                 _state = "SourceConnected";
+                connectedAt = Stopwatch.GetTimestamp();
                 _metadata.SetConnected(true);
                 _lastError = null;
                 feed = FeedEncoderAsync(pcm, session.Token);
@@ -103,10 +106,10 @@ public sealed class IcecastOutput : IProgramOutput
             catch (Exception ex)
             {
                 _lastError = ex is OperationCanceledException ? "Output stalled or its bounded queue overflowed." : ex.Message;
-                failures = Math.Min(failures + 1, 5);
             }
             finally
             {
+                if (connectedAt is long started) connectedFor = Stopwatch.GetElapsedTime(started);
                 _metadata.SetConnected(false);
                 Volatile.Write(ref _pid, 0);
                 await session.CancelAsync();
@@ -118,7 +121,7 @@ public sealed class IcecastOutput : IProgramOutput
             }
             if (_stop.IsCancellationRequested) break;
             _state = "Reconnecting";
-            try { await Task.Delay(TimeSpan.FromMilliseconds(Math.Min(3000, 200 * (1 << failures))), _stop.Token); }
+            try { await Task.Delay(reconnect.Next(connectedFor), _stop.Token); }
             catch (OperationCanceledException) { break; }
         }
         DrainStale();
