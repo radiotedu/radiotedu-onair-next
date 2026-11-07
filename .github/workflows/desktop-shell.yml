@@ -1,0 +1,51 @@
+name: Desktop console qualification
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/origin-liveness-and-desktop-20261107]
+permissions:
+  contents: read
+jobs:
+  desktop:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: desktop-shell
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Prepare pinned Electron dependency lock
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Install exact locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run console origin and session tests
+        run: npm test
+      - name: Exercise real window and tray on isolated loopback
+        run: |
+          & ./node_modules/electron/dist/electron.exe ./test/smoke-main.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Stage portable desktop console
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP 'radiotedu-desktop-package'
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item -Path ./node_modules/electron/dist/* -Destination $stage -Recurse
+          Move-Item -LiteralPath (Join-Path $stage 'electron.exe') -Destination (Join-Path $stage 'RadioTEDU OnAir Next.exe')
+          $appDir = Join-Path $stage 'resources/app'
+          New-Item -ItemType Directory -Path $appDir | Out-Null
+          Copy-Item -Path ./main.cjs,./policy.cjs,./shortcut.cjs,./package.json,./icon.png,./icon.ico -Destination $appDir
+          Copy-Item -LiteralPath ./package-lock.json -Destination $env:RUNNER_TEMP/desktop-package-lock.json
+      - name: Retain qualified portable desktop
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: onair-next-desktop-windows
+          path: ${{ runner.temp }}/radiotedu-desktop-package
+          if-no-files-found: error
+      - name: Retain resolved dependency lock
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: onair-next-desktop-lock
+          path: ${{ runner.temp }}/desktop-package-lock.json
+          if-no-files-found: error
