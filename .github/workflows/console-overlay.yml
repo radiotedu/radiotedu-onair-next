@@ -1,0 +1,30 @@
+name: Console webroot qualification
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/origin-liveness-and-desktop-20261107]
+permissions:
+  contents: read
+jobs:
+  webroot:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: '10.0.402'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Restore pinned console dependencies
+        run: dotnet restore src/OnAirNext.Web/OnAirNext.Web.csproj --locked-mode --disable-parallel -m:1
+      - name: Build isolated console
+        run: dotnet build src/OnAirNext.Web/OnAirNext.Web.csproj -c Release --no-restore -m:1 /p:UseSharedCompilation=false
+      - name: Verify reviewed static root on loopback
+        run: |
+          export ONAIR_WEB_DLL="$LOCALAPPDATA/RadioTEDU/OnAirNext-Dev/build/bin/OnAirNext.Web/release/OnAirNext.Web.dll"
+          node --test tests/browser/webroot-override.test.cjs

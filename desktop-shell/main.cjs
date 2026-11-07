@@ -1,7 +1,7 @@
 'use strict';
 const {app,BrowserWindow,Tray,Menu,dialog,shell,session,nativeImage}=require('electron');
 const {spawn}=require('node:child_process');
-const fs=require('node:fs/promises'),http=require('node:http'),path=require('node:path');
+const fs=require('node:fs/promises'),http=require('node:http'),path=require('node:path'),crypto=require('node:crypto');
 const {ORIGIN,allowedNavigation,allowedPermission,shouldRetrySession,verifiedDescriptor,consoleUrl}=require('./policy.cjs');
 const {ensureDesktopShortcut}=require('./shortcut.cjs');
 let window=null,tray=null,quitting=false,opening=null,pendingOpen=false;
@@ -22,11 +22,24 @@ async function readReady(allowNotReady=false){const h=await health();if(!h)retur
  try{d=JSON.parse(await fs.readFile(endpoint,'utf8'))}catch(error){if(allowNotReady&&(error.code==='ENOENT'||error instanceof SyntaxError))return null;throw new Error('Open the console using the Windows account that owns its session.')}
  if(!verifiedDescriptor(h,d))throw new Error('The console session could not be verified.');return d;
 }
+async function consoleEnvironment(){
+ const base=path.join(process.env.LOCALAPPDATA||'', 'RadioTEDU','OnAirNext-Desktop');
+ const root=path.join(base,'webroots','startup-session-cea8313');
+ try{
+  const content=await fs.readFile(path.join(base,'webroot-manifest-cea8313.json'));
+  const digest=value=>crypto.createHash('sha256').update(value).digest('hex');
+  if(digest(content)!=='566f87e953189753b58083e86c4c3c973e5c45cfeae64758944a35613dbfd972')return process.env;
+  const manifest=JSON.parse(content);if(manifest.schema!==1||!Array.isArray(manifest.files)||manifest.files.length!==48)return process.env;
+  if(digest(await fs.readFile(path.join(path.dirname(web),'OnAirNext.Web.dll')))!==manifest.baseConsoleSha256)return process.env;
+  for(const file of manifest.files){if(!/^[a-z0-9._-]+$/i.test(file.name)||digest(await fs.readFile(path.join(root,file.name)))!==file.sha256)return process.env;}
+  return {...process.env,ASPNETCORE_WEBROOT:root,ASPNETCORE_ENVIRONMENT:'Production'};
+ }catch{return process.env}
+}
 async function ensureConsole(){
  let ready=null;
  for(let attempt=0;attempt<3;attempt++){try{ready=await readReady();break}catch(error){if(!['HEALTH_TIMEOUT','ECONNRESET','ETIMEDOUT'].includes(error.code)||attempt===2)throw error;await new Promise(r=>setTimeout(r,500))}}
  if(ready)return ready;
- await fs.access(web);const child=spawn(web,[],{detached:true,windowsHide:true,stdio:'ignore',cwd:path.dirname(web)});let spawnError=null;child.on('error',error=>{spawnError=error});child.unref();
+ await fs.access(web);const child=spawn(web,[],{detached:true,windowsHide:true,stdio:'ignore',cwd:path.dirname(web),env:await consoleEnvironment()});let spawnError=null;child.on('error',error=>{spawnError=error});child.unref();
  const until=Date.now()+60000;while(Date.now()<until){await new Promise(r=>setTimeout(r,400));if(spawnError)throw new Error('The local console could not start.');ready=await readReady(true);if(ready)return ready;if(child.exitCode!==null)throw new Error('The local console did not start.');}
  throw new Error('The local console did not become ready. Broadcasts continue independently.');
 }
@@ -70,7 +83,7 @@ if(!app.requestSingleInstanceLock())app.quit();else{
    try{await ensureDesktopShortcut(shell,app.getPath('desktop'),process.execPath,path.join(process.env.ProgramFiles||'C:\\Program Files','RadioTEDU-OnAirNext-Development','setup','OnAirNext.Setup.exe'),path.join(__dirname,'icon.ico'))}
    catch(error){if(!process.argv.includes('--background'))dialog.showErrorBox('Desktop shortcut',String(error.message||error))}
   }
-  if(pendingOpen||!process.argv.includes('--background'))void showWindow();
+  if(pendingOpen||!process.argv.includes('--background'))void showWindow();else void ensureConsole().catch(()=>{});
  }).catch(error=>{dialog.showErrorBox('RadioTEDU OnAir Next',String(error.message||error));app.quit()});
 }
 
