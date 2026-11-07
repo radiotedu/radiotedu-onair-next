@@ -72,7 +72,7 @@ public sealed class IcecastOutput : IProgramOutput
             Process? encoder = null;
             long? connectedAt = null;
             TimeSpan? connectedFor = null;
-            Task? feed = null, drain = null;
+            Task? feed = null, drain = null, presence = null;
             using var client = new TcpClient { NoDelay = true, SendBufferSize = 8192 };
             using var pcm = new CodecPipe(System.IO.Pipes.PipeDirection.Out);
             using var encoded = new CodecPipe(System.IO.Pipes.PipeDirection.In);
@@ -98,7 +98,8 @@ public sealed class IcecastOutput : IProgramOutput
                 feed = FeedEncoderAsync(pcm, session.Token);
                 drain = SendEncodedAsync(encoded, client.GetStream(), session.Token);
                 var exit = encoder.WaitForExitAsync(session.Token);
-                await await Task.WhenAny(feed, drain, exit);
+                presence = OriginMountPresence.MonitorAsync(_settings, session.Token);
+                await await Task.WhenAny(feed, drain, exit, presence);
                 if (!session.IsCancellationRequested) throw new IOException("Owned encoder or source transport ended.");
                 _ = errors; // Output is drained to prevent a blocked stderr pipe; never expose source credentials.
             }
@@ -115,7 +116,7 @@ public sealed class IcecastOutput : IProgramOutput
                 await session.CancelAsync();
                 client.Close();
                 if (encoder is not null) await ChildProcess.StopAsync(encoder);
-                foreach (var task in new[] { feed, drain })
+                foreach (var task in new[] { feed, drain, presence })
                     if (task is not null) { try { await task; } catch (Exception) { /* supervised session failure */ } }
                 Volatile.Write(ref _session, null);
             }
