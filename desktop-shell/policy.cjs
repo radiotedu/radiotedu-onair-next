@@ -13,5 +13,6 @@ function allowedPermission(permission,origin,details={}){
  if(permission!=='media'||details.mediaType==='video')return false;
  return !Array.isArray(details.mediaTypes)||!details.mediaTypes.includes('video');
 }
+function shouldRetrySession(message){return typeof message==='string'&&message.startsWith('Console connection unavailable:')&&/timed out|network|fetch/i.test(message)}
 function consoleUrl(descriptor){return ORIGIN+'/#access='+descriptor.Token}
-module.exports={ORIGIN,allowedNavigation,allowedPermission,verifiedDescriptor,consoleUrl};
+module.exports={ORIGIN,allowedNavigation,allowedPermission,shouldRetrySession,verifiedDescriptor,consoleUrl};

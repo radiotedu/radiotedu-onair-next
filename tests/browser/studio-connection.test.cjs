@@ -17,13 +17,13 @@ class Element{
  closest(){return this.parentElement;}
  querySelectorAll(){return[];}
 }
-async function open({engines=['onair-next-dev-service'],preview=false,sessionDenied=false}={}){
+async function open({engines=['onair-next-dev-service'],preview=false,sessionDenied=false,sessionFailures=0}={}){
  const nodes=new Map(),requests=[],intervals=[];let available=engines,failedStatus=false,now=Date.now();
  class Clock extends Date{constructor(...args){super(...(args.length?args:[now]));}static now(){return now;}}
  const get=id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id)};
  const document={hidden:false,body:new Element(),getElementById:get,createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),createTextNode:text=>({textContent:text}),querySelectorAll:()=>[],querySelector:()=>new Element(),addEventListener(){}};
  const api=async(url,options={})=>{requests.push({url,method:options.method??'GET'});let value,status=200;
-  if(url==='/api/session'){status=sessionDenied?403:200;value=sessionDenied?{error:'Open the installed shortcut'}:{token:'fixture-token',preview};}
+  if(url==='/api/session'){if(sessionFailures>0){sessionFailures--;throw Error('signal timed out')}status=sessionDenied?403:200;value=sessionDenied?{error:'Open the installed shortcut'}:{token:'fixture-token',preview};}
   else if(url==='/api/engines')value={engines:available,preview};
   else if(url.startsWith('/api/status?')){if(failedStatus){status=503;value={error:'Temporary unavailable'};}else value={stations:[{Id:'9',State:'Running',Enabled:true,RequestedRunning:true,CurrentTitle:'Live fixture song',CurrentArtist:'Fixture artist',Samples:480000,CurrentItemSamples:48000,CurrentDurationSeconds:100,Outputs:[{Id:'fixture-output',State:'SourceConnected'}]}],controller:{mode:'windows-service',capabilities:[]},audit:{PendingEvents:0,RejectedEvents:0}};}
   else if(url.startsWith('/api/loudness?'))value={station:'9',meter:null};
@@ -50,7 +50,11 @@ test('explicit console disconnect is respected without stopping broadcasts',asyn
  const page=await open();await page.get('disconnect-engine').listeners.click();const before=page.requests.length;await page.tick(10);assert.equal(page.get('station-state').textContent,'Not connected');assert.equal(page.requests.length,before);assert.ok(page.requests.every(r=>r.method==='GET'));
 });
 test('a rejected operator session cannot attach to an engine',async()=>{
- const page=await open({sessionDenied:true});assert.equal(page.get('station-state').textContent,'Not connected');assert.ok(!page.requests.some(r=>r.url.startsWith('/api/status')));
+ const page=await open({sessionDenied:true});await page.tick(10);assert.equal(page.get('station-state').textContent,'Not connected');assert.ok(!page.requests.some(r=>r.url.startsWith('/api/status')));assert.equal(page.requests.filter(r=>r.url==='/api/session').length,1);
+});
+test('a temporary first-session timeout retries and attaches automatically',async()=>{
+ const page=await open({sessionFailures:1});assert.equal(page.get('station-state').textContent,'Not connected');await page.tick(5);
+ assert.equal(page.get('station-state').textContent,'Running');assert.equal(page.get('now-title').textContent,'Live fixture song');assert.equal(page.requests.filter(r=>r.url==='/api/session').length,2);assert.ok(page.requests.every(r=>r.method==='GET'));
 });
 test('a transient status failure retains a recent sample but does not present stale data as live',async()=>{
  const page=await open();page.setStatusFailure(true);await page.tick(2);assert.equal(page.get('station-state').textContent,'Running');

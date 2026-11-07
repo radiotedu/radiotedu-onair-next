@@ -20,3 +20,9 @@ test('only local audio permissions are allowed',()=>{
  assert.equal(p.allowedPermission('speaker-selection',local),true);
  for(const [kind,url,details] of [['media',local,{mediaTypes:['video']}],['media',local,{mediaType:'video'}],['media',remote,{}],['geolocation',local,{}],['display-capture',local,{}]])assert.equal(p.allowedPermission(kind,url,details),false);
 });
+
+test('only transient console session failures trigger a reload',()=>{
+ assert.equal(p.shouldRetrySession('Console connection unavailable: signal timed out'),true);
+ assert.equal(p.shouldRetrySession('Console connection unavailable: Open the installed shortcut'),false);
+ assert.equal(p.shouldRetrySession('Connected'),false);
+});

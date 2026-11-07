@@ -2,7 +2,7 @@
 const {app,BrowserWindow,Tray,Menu,dialog,shell,session,nativeImage}=require('electron');
 const {spawn}=require('node:child_process');
 const fs=require('node:fs/promises'),http=require('node:http'),path=require('node:path');
-const {ORIGIN,allowedNavigation,allowedPermission,verifiedDescriptor,consoleUrl}=require('./policy.cjs');
+const {ORIGIN,allowedNavigation,allowedPermission,shouldRetrySession,verifiedDescriptor,consoleUrl}=require('./policy.cjs');
 const {ensureDesktopShortcut}=require('./shortcut.cjs');
 let window=null,tray=null,quitting=false,opening=null,pendingOpen=false;
 // The descriptor belongs to the signed-in operator, independently of Electron's profile.
@@ -10,12 +10,12 @@ const endpoint=path.join(process.env.LOCALAPPDATA||'', 'RadioTEDU','OnAirNext-De
 const web=path.join(process.env.ProgramFiles||'C:\\Program Files','RadioTEDU-OnAirNext-Development','console','OnAirNext.Web.exe');
 function health(){return new Promise((resolve,reject)=>{
  let body='',done=false;const finish=(error,value)=>{if(done)return;done=true;error?reject(error):resolve(value)};
- const req=http.get(ORIGIN+'/api/health',{agent:false,timeout:1500},res=>{
+ const req=http.get(ORIGIN+'/api/health',{agent:false,timeout:5000},res=>{
   if(res.statusCode!==200){res.resume();return finish(new Error('The console port is occupied by another application.'))}
   res.setEncoding('utf8');res.on('data',x=>{body+=x;if(body.length>4096)req.destroy(new Error('Invalid console response.'))});
   res.on('end',()=>{try{finish(null,JSON.parse(body))}catch{finish(new Error('Invalid console response.'))}});
   res.on('error',finish);
- });req.on('timeout',()=>req.destroy(new Error('Console health check timed out.')));
+ });req.on('timeout',()=>{const error=new Error('Console health check timed out.');error.code='HEALTH_TIMEOUT';req.destroy(error)});
  req.on('error',err=>err.code==='ECONNREFUSED'?finish(null,null):finish(err));
 })}
 async function readReady(allowNotReady=false){const h=await health();if(!h)return null;let d;
@@ -23,7 +23,9 @@ async function readReady(allowNotReady=false){const h=await health();if(!h)retur
  if(!verifiedDescriptor(h,d))throw new Error('The console session could not be verified.');return d;
 }
 async function ensureConsole(){
- let ready=await readReady();if(ready)return ready;
+ let ready=null;
+ for(let attempt=0;attempt<3;attempt++){try{ready=await readReady();break}catch(error){if(!['HEALTH_TIMEOUT','ECONNRESET','ETIMEDOUT'].includes(error.code)||attempt===2)throw error;await new Promise(r=>setTimeout(r,500))}}
+ if(ready)return ready;
  await fs.access(web);const child=spawn(web,[],{detached:true,windowsHide:true,stdio:'ignore',cwd:path.dirname(web)});let spawnError=null;child.on('error',error=>{spawnError=error});child.unref();
  const until=Date.now()+60000;while(Date.now()<until){await new Promise(r=>setTimeout(r,400));if(spawnError)throw new Error('The local console could not start.');ready=await readReady(true);if(ready)return ready;if(child.exitCode!==null)throw new Error('The local console did not start.');}
  throw new Error('The local console did not become ready. Broadcasts continue independently.');
@@ -34,6 +36,13 @@ function newWindow(){
  w.webContents.on('will-navigate',(event,url)=>{if(!allowedNavigation(url))event.preventDefault()});
  w.webContents.on('will-redirect',(event,url)=>{if(!allowedNavigation(url))event.preventDefault()});
  w.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+ let sessionRetries=0;
+ w.webContents.on('did-finish-load',()=>{if(sessionRetries>=5)return;setTimeout(async()=>{
+  if(w.isDestroyed()||!allowedNavigation(w.webContents.getURL()))return;
+  try{const message=await w.webContents.executeJavaScript("document.getElementById('action-status')?.textContent || ''");
+   if(shouldRetrySession(message)){sessionRetries++;w.reload()}
+  }catch{}
+ },8000)});
  w.on('close',event=>{if(!quitting){event.preventDefault();w.hide()}});
  w.on('closed',()=>{if(window===w)window=null});return w;
 }

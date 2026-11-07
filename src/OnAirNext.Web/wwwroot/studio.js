@@ -697,8 +697,15 @@
     finally{migration.busy=false;migrationControls();}
   });
 
-  async function initialize(){stationTabs();renderStatus();try{state.session=await api('/api/session');text('build-label',state.session.preview?'UI PREVIEW':'DEVELOPMENT');}catch(error){message('Console connection unavailable: '+error.message);}await discover();}
-  let ticks=0;setInterval(()=>{if(document.hidden||state.consoleClosed)return;text('clock',clock.format(new Date()));renderStatus();if(++ticks%2===0){void poll();void pollFolderCheck();}if(ticks%5===0&&state.autoConnect&&state.session&&!state.engine)void discover();if(ticks%4===0&&state.page==='library')void loadLibrary();if(ticks%4===0&&state.page==='system'){void loadSetup();void loadMigration();void loadAppUpdates();void loadAudioTools();}},1000);text('clock',clock.format(new Date()));document.addEventListener('visibilitychange',()=>{if(!document.hidden){text('clock',clock.format(new Date()));void poll();}});void initialize();
+  let sessionLoading=false,sessionDenied=false,sessionHadError=false;
+  async function connectSession(){
+    if(state.session||sessionLoading||sessionDenied||state.consoleClosed)return;sessionLoading=true;
+    try{state.session=await api('/api/session');text('build-label',state.session.preview?'UI PREVIEW':'DEVELOPMENT');if(sessionHadError){message('Console reconnected.');sessionHadError=false;}if(state.autoConnect)await discover();}
+    catch(error){sessionHadError=true;if(error.status===401||error.status===403)sessionDenied=true;message('Console connection unavailable: '+error.message);}
+    finally{sessionLoading=false;}
+  }
+  async function initialize(){stationTabs();renderStatus();await connectSession();}
+  let ticks=0;setInterval(()=>{if(document.hidden||state.consoleClosed)return;text('clock',clock.format(new Date()));renderStatus();if(++ticks%2===0){void poll();void pollFolderCheck();}if(ticks%5===0&&!state.session&&!sessionDenied)void connectSession();if(ticks%5===0&&state.autoConnect&&state.session&&!state.engine)void discover();if(ticks%4===0&&state.page==='library')void loadLibrary();if(ticks%4===0&&state.page==='system'){void loadSetup();void loadMigration();void loadAppUpdates();void loadAudioTools();}},1000);text('clock',clock.format(new Date()));document.addEventListener('visibilitychange',()=>{if(!document.hidden){text('clock',clock.format(new Date()));void poll();}});void initialize();
 
   const reports={items:[],engine:null,loadedAt:0,offset:0,polling:false,busy:false,rows:new Map(),pending:[]};
   try{const saved=JSON.parse(localStorage.getItem('studio-report-requests')??'[]');if(Array.isArray(saved))reports.pending=saved.filter(p=>typeof p.engine==='string'&&/^[0-9a-f]{32}$/.test(p.id??'')&&['day','year'].includes(p.period)&&typeof p.selection==='string').slice(0,16);}catch{}
