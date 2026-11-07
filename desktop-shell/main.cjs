@@ -28,7 +28,7 @@ async function consoleEnvironment(){
  try{
   const content=await fs.readFile(path.join(base,'webroot-manifest-cea8313.json'));
   const digest=value=>crypto.createHash('sha256').update(value).digest('hex');
-  if(digest(content)!=='566f87e953189753b58083e86c4c3c973e5c45cfeae64758944a35613dbfd972')return process.env;
+  if(digest(content)!=='7e38cbbde8d02ce4aab5fe7d3d7538ed01cf40a5038c5cce29c9f5df5b065538')return process.env;
   const manifest=JSON.parse(content);if(manifest.schema!==1||!Array.isArray(manifest.files)||manifest.files.length!==48)return process.env;
   if(digest(await fs.readFile(path.join(path.dirname(web),'OnAirNext.Web.dll')))!==manifest.baseConsoleSha256)return process.env;
   for(const file of manifest.files){if(!/^[a-z0-9._-]+$/i.test(file.name)||digest(await fs.readFile(path.join(root,file.name)))!==file.sha256)return process.env;}
