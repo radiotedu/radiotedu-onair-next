@@ -17,8 +17,6 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
-      - name: Prepare pinned Electron dependency lock
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Install exact locked dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Download pinned Electron binary
@@ -39,6 +37,20 @@ jobs:
           New-Item -ItemType Directory -Path $appDir | Out-Null
           Copy-Item -Path ./main.cjs,./policy.cjs,./shortcut.cjs,./package.json,./icon.png,./icon.ico -Destination $appDir
           Copy-Item -LiteralPath ./package-lock.json -Destination $env:RUNNER_TEMP/desktop-package-lock.json
+      - name: Verify packaged background launch and desktop shortcut
+        run: |
+          $exe = Join-Path $env:RUNNER_TEMP 'radiotedu-desktop-package/RadioTEDU OnAir Next.exe'
+          $proc = Start-Process -FilePath $exe -ArgumentList "--background" -PassThru -WindowStyle Hidden
+          try {
+            Start-Sleep -Seconds 5
+            if ($proc.HasExited) { throw 'Packaged desktop process exited unexpectedly.' }
+            $shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'RadioTEDU OnAir Next.lnk'
+            if (-not (Test-Path -LiteralPath $shortcut)) { throw 'Packaged desktop shortcut missing.' }
+            $link = (New-Object -ComObject WScript.Shell).CreateShortcut($shortcut)
+            if ($link.TargetPath -ne $exe) { throw 'Packaged desktop shortcut points elsewhere.' }
+          } finally {
+            if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+          }
       - name: Retain qualified portable desktop
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
