@@ -71,7 +71,7 @@ var icecastRoot = arguments.GetValueOrDefault("--icecast-root") ?? Path.Combine(
 var scenario = arguments.GetValueOrDefault("--scenario") ?? "all";
 var duration = int.Parse(arguments.GetValueOrDefault("--duration-seconds") ?? "12", System.Globalization.CultureInfo.InvariantCulture);
 if (duration is < 6 or > 259200) throw new ArgumentException("Choose 6 seconds through 72 hours.");
-if (scenario is not ("all" or "baseline" or "recovery" or "durable" or "lifecycle" or "finite" or "offline" or "fleet" or "live" or "soak" or "backpressure" or "corrupt" or "host" or "precision" or "normalization" or "processing" or "roster18" or "roster16-soak" or "queue" or "queue-durable")) throw new ArgumentException("Unknown lab scenario.");
+if (scenario is not ("all" or "baseline" or "recovery" or "phantom" or "durable" or "lifecycle" or "finite" or "offline" or "fleet" or "live" or "soak" or "backpressure" or "corrupt" or "host" or "precision" or "normalization" or "processing" or "roster18" or "roster16-soak" or "queue" or "queue-durable")) throw new ArgumentException("Unknown lab scenario.");
 var runRoot = Path.Combine(localRoot, "runs", DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N")[..8]);
 Directory.CreateDirectory(runRoot);
 var fixtures = Sandbox.Fixtures(Path.Combine(runRoot, "fixtures"));
@@ -87,6 +87,7 @@ foreach (var name in scenario == "all" ? new[] { "baseline", "precision", "norma
         {
             case "baseline": await BaselineAsync(result); break;
             case "recovery": await RecoveryAsync(result); break;
+            case "phantom": await PhantomAsync(result); break;
             case "durable": await DurableAsync(result); break;
             case "lifecycle": await LifecycleAsync(result); break;
             case "finite": await FiniteAsync(result); break;
@@ -305,6 +306,32 @@ async Task RecoveryAsync(CaseResult result)
         Check(result, final.State == "Running" && final.Samples > beforeOutage + 48000, "Origin outage never restarts or rewinds the program timeline.");
     }
     ValidateHistory(result, database);
+}
+
+async Task PhantomAsync(CaseResult result)
+{
+    var root = Path.Combine(runRoot, result.Name); Directory.CreateDirectory(root);
+    await using var origin = new PhantomOrigin();
+    await using var journal = new EventJournal(Path.Combine(root, "playback.db"));
+    await using var station = new StationEngine(ffmpeg, new StationSettings("phantom", fixtures,
+        [origin.Output("phantom"), origin.Output("peer")]), journal);
+    await station.StartAsync();
+    await WaitAsync(() => station.Snapshot().Outputs.All(x => x.State == "SourceConnected") &&
+        origin.Bytes("/next-phantom") > 0 && origin.Bytes("/next-peer") > 0, "Both source outputs must deliver fixture bytes.", 20);
+    var before = station.Snapshot(); var peer = before.Outputs[1]; var peerBytes = origin.Bytes("/next-peer");
+    var phantomBytes = origin.Bytes("/next-phantom");
+    Check(result, peer.EncoderPid.HasValue, "The healthy peer owns an encoder.");
+    origin.HidePhantom();
+    await WaitAsync(() => station.Snapshot().Outputs[0].Connections >= 2 &&
+        station.Snapshot().Outputs[0].State == "SourceConnected", "The hidden source must reconnect independently.", 75);
+    await WaitAsync(() => origin.Bytes("/next-phantom") > phantomBytes + 1024, "Recovered output must resume sending encoded bytes.", 10);
+    var after = station.Snapshot();
+    Check(result, after.State == "Running" && after.Samples > before.Samples, "The programme clock continues while one mount recovers.");
+    Check(result, after.Outputs[1].Connections == peer.Connections && after.Outputs[1].EncoderPid == peer.EncoderPid,
+        "The healthy peer retains its original encoder and source socket.");
+    Check(result, origin.Bytes("/next-peer") > peerBytes, "The healthy peer continues sending audio during recovery.");
+    Check(result, origin.Bytes("/next-phantom") > phantomBytes + 1024, "The recovered output resumes sending encoded audio.");
+    result.Details["station"] = after;
 }
 
 async Task OfflineAsync(CaseResult result)
