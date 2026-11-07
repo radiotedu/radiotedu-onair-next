@@ -20,7 +20,9 @@ jobs:
       - name: Prepare pinned Electron dependency lock
         run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Install exact locked dependencies
-        run: npm ci --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Download pinned Electron binary
+        run: node ./node_modules/electron/install.js
       - name: Run console origin and session tests
         run: npm test
       - name: Exercise real window and tray on isolated loopback
