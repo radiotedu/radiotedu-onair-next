@@ -13,3 +13,10 @@ test('only a matching private session descriptor is accepted',()=>{
  assert.equal(p.verifiedDescriptor({...good,product:'other'},descriptor),false);
  assert.equal(p.consoleUrl(descriptor),p.ORIGIN+'/#access='+descriptor.Token);
 });
+
+test('only local audio permissions are allowed',()=>{
+ const local='http://127.0.0.1:18121/', remote='https://example.invalid';
+ assert.equal(p.allowedPermission('media',local,{mediaTypes:['audio']}),true);
+ assert.equal(p.allowedPermission('speaker-selection',local),true);
+ for(const [kind,url,details] of [['media',local,{mediaTypes:['video']}],['media',local,{mediaType:'video'}],['media',remote,{}],['geolocation',local,{}],['display-capture',local,{}]])assert.equal(p.allowedPermission(kind,url,details),false);
+});

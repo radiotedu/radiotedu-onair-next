@@ -7,5 +7,11 @@ function verifiedDescriptor(health,descriptor){
   typeof health.version==='string'&&health.version.length>0&&!!descriptor&&descriptor.ProcessId===health.processId&&
   descriptor.Version===health.version&&typeof descriptor.Token==='string'&&/^[0-9a-f]{64}$/i.test(descriptor.Token);
 }
+function allowedPermission(permission,origin,details={}){
+ if(!allowedNavigation(origin))return false;
+ if(permission==='speaker-selection')return true;
+ if(permission!=='media'||details.mediaType==='video')return false;
+ return !Array.isArray(details.mediaTypes)||!details.mediaTypes.includes('video');
+}
 function consoleUrl(descriptor){return ORIGIN+'/#access='+descriptor.Token}
-module.exports={ORIGIN,allowedNavigation,verifiedDescriptor,consoleUrl};
+module.exports={ORIGIN,allowedNavigation,allowedPermission,verifiedDescriptor,consoleUrl};

@@ -2,7 +2,7 @@
 const {app,BrowserWindow,Tray,Menu,dialog,shell,session,nativeImage}=require('electron');
 const {spawn}=require('node:child_process');
 const fs=require('node:fs/promises'),http=require('node:http'),path=require('node:path');
-const {ORIGIN,allowedNavigation,verifiedDescriptor,consoleUrl}=require('./policy.cjs');
+const {ORIGIN,allowedNavigation,allowedPermission,verifiedDescriptor,consoleUrl}=require('./policy.cjs');
 const {ensureDesktopShortcut}=require('./shortcut.cjs');
 let window=null,tray=null,quitting=false,opening=null,pendingOpen=false;
 // The descriptor belongs to the signed-in operator, independently of Electron's profile.
@@ -54,7 +54,8 @@ if(!app.requestSingleInstanceLock())app.quit();else{
  app.on('before-quit',()=>{quitting=true});app.on('window-all-closed',()=>{});
  app.whenReady().then(async()=>{
   app.setAppUserModelId('com.radiotedu.onairnext');
-  session.defaultSession.setPermissionRequestHandler((wc,permission,callback,details)=>callback(permission==='media'&&allowedNavigation(details.requestingUrl||wc?.getURL()||'')));
+  session.defaultSession.setPermissionCheckHandler((_wc,permission,origin,details)=>allowedPermission(permission,origin,details));
+  session.defaultSession.setPermissionRequestHandler((wc,permission,callback,details)=>callback(allowedPermission(permission,details?.requestingUrl||wc?.getURL()||'',details)));
   makeTray();if(app.isPackaged){
    app.setLoginItemSettings({openAtLogin:true,path:process.execPath,args:['--background']});
    try{await ensureDesktopShortcut(shell,app.getPath('desktop'),process.execPath,path.join(process.env.ProgramFiles||'C:\\Program Files','RadioTEDU-OnAirNext-Development','setup','OnAirNext.Setup.exe'),path.join(__dirname,'icon.ico'))}
