@@ -69,6 +69,19 @@ public sealed class LibraryAudioProbe(string ffmpeg) : IAsyncDisposable
     }
     private static string Clean(string value, int limit) => new(value.Where(c => !char.IsControl(c)).Take(limit).ToArray());
 
+    // FFmpeg can print kilobytes of tags and loudness summaries around a brief
+    // decoding error. Preserve actionable lines instead of the first tag text.
+    internal static string FailureDetails(string diagnostic)
+    {
+        var errors = diagnostic.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            .Where(line => new[] { "error", "invalid", "failed", "missing", "corrupt" }
+                .Any(term => line.Contains(term, StringComparison.OrdinalIgnoreCase)))
+            .ToArray();
+        var details = errors.Length == 0 ? diagnostic[^Math.Min(500, diagnostic.Length)..]
+            : string.Join("\n", errors.Take(2).Concat(errors.TakeLast(1)).Distinct(StringComparer.Ordinal));
+        return details[..Math.Min(500, details.Length)];
+    }
+
     private sealed record CaptureResult(string Output, string Diagnostic);
     private async Task<CaptureResult> CaptureAsync(string executable, string[] arguments, TimeSpan timeout, CancellationToken token, SourceEdgeAnalysis? edges = null)
     {
@@ -92,7 +105,7 @@ public sealed class LibraryAudioProbe(string ffmpeg) : IAsyncDisposable
             if (await Task.WhenAny(output, exited) == output) await output;
             await exited;
             var diagnostic = await error;
-            if (process.ExitCode != 0) throw new InvalidDataException("Audio validation failed: " + diagnostic[..Math.Min(500, diagnostic.Length)]);
+            if (process.ExitCode != 0) throw new InvalidDataException("Audio validation failed: " + FailureDetails(diagnostic));
             return new(await output, diagnostic);
         }
         finally
