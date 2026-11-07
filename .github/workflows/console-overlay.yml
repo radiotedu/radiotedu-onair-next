@@ -23,7 +23,7 @@ jobs:
       - name: Restore pinned console dependencies
         run: dotnet restore src/OnAirNext.Web/OnAirNext.Web.csproj --locked-mode --disable-parallel -m:1
       - name: Build isolated console
-        run: dotnet build src/OnAirNext.Web/OnAirNext.Web.csproj -c Release --no-restore -m:1 /p:UseSharedCompilation=false
+        run: dotnet build src/OnAirNext.Web/OnAirNext.Web.csproj -c Release --no-restore -m:1 -p:UseSharedCompilation=false
       - name: Verify reviewed static root on loopback
         run: |
           export ONAIR_WEB_DLL="$LOCALAPPDATA/RadioTEDU/OnAirNext-Dev/build/bin/OnAirNext.Web/release/OnAirNext.Web.dll"

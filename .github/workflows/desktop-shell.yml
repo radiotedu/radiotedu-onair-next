@@ -3,6 +3,9 @@ on:
   workflow_dispatch:
   push:
     branches: [fix/origin-liveness-and-desktop-20261107]
+    paths:
+      - desktop-shell/**
+      - .github/workflows/desktop-shell.yml
 permissions:
   contents: read
 jobs:
