@@ -55,6 +55,8 @@ jobs:
         run: |
           $specs = @(Get-ChildItem -LiteralPath tests/browser -Filter '*.test.cjs' -File | ForEach-Object FullName)
           if ($specs.Count -eq 0) { throw 'No browser model tests were discovered.' }
+          $env:ONAIR_WEB_DLL = Join-Path $env:LOCALAPPDATA 'RadioTEDU/OnAirNext-Dev/build/bin/OnAirNext.Web/release/OnAirNext.Web.dll'
+          if (-not (Test-Path -LiteralPath $env:ONAIR_WEB_DLL -PathType Leaf)) { throw 'The compiled console DLL is missing.' }
           & node --test @specs
           if ($LASTEXITCODE -ne 0) { throw 'Browser model tests failed.' }
       - name: Check browser application script syntax
