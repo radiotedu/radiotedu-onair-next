@@ -14,7 +14,7 @@ public sealed class IcecastOutput : IProgramOutput
     private readonly IcecastMetadataPublisher _metadata;
     private readonly Channel<PcmBlock> _queue;
     private readonly CancellationTokenSource _stop = new();
-    private CancellationTokenSource? _session;
+    private CancellationTokenSource? _streamingSession;
     private Task? _run;
     private volatile string _state = "Stopped";
     private string? _lastError;
@@ -48,12 +48,13 @@ public sealed class IcecastOutput : IProgramOutput
     public bool Publish(PcmBlock block)
     {
         if (_stop.IsCancellationRequested) return false;
+        var streamingSession = Volatile.Read(ref _streamingSession);
         block.AddReference();
         if (_queue.Writer.TryWrite(block)) return true;
         block.Dispose();
         Interlocked.Increment(ref _drops);
-        // No common producer waits for this output. A full queue invalidates its stale session.
-        try { Volatile.Read(ref _session)?.Cancel(); } catch (ObjectDisposedException) { }
+        // Overflow can invalidate an active stream, but never an in-progress handshake.
+        try { streamingSession?.Cancel(); } catch (ObjectDisposedException) { }
         return false;
     }
 
@@ -68,7 +69,6 @@ public sealed class IcecastOutput : IProgramOutput
         {
             DrainStale();
             using var session = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
-            Volatile.Write(ref _session, session);
             Process? encoder = null;
             long? connectedAt = null;
             TimeSpan? connectedFor = null;
@@ -90,6 +90,10 @@ public sealed class IcecastOutput : IProgramOutput
                 encoder = StartEncoder(pcm.Path, encoded.Path);
                 Volatile.Write(ref _pid, encoder.Id);
                 Interlocked.Increment(ref _starts);
+                // A slow handshake may have filled the queue with old programme audio.
+                // Give the new encoder room before enabling overload cancellation.
+                if (_queue.Reader.Count == _settings.QueueBlocks) DrainStale();
+                Volatile.Write(ref _streamingSession, session);
                 var errors = ChildProcess.DrainErrorAsync(encoder);
                 _state = "SourceConnected";
                 connectedAt = Stopwatch.GetTimestamp();
@@ -112,13 +116,13 @@ public sealed class IcecastOutput : IProgramOutput
             {
                 if (connectedAt is long started) connectedFor = Stopwatch.GetElapsedTime(started);
                 _metadata.SetConnected(false);
+                Volatile.Write(ref _streamingSession, null);
                 Volatile.Write(ref _pid, 0);
                 await session.CancelAsync();
                 client.Close();
                 if (encoder is not null) await ChildProcess.StopAsync(encoder);
                 foreach (var task in new[] { feed, drain, presence })
                     if (task is not null) { try { await task; } catch (Exception) { /* supervised session failure */ } }
-                Volatile.Write(ref _session, null);
             }
             if (_stop.IsCancellationRequested) break;
             _state = "Reconnecting";

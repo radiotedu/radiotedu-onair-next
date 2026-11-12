@@ -15,12 +15,17 @@ internal sealed class PhantomOrigin : IAsyncDisposable
     private readonly ConcurrentDictionary<string,int> _connections = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string,long> _bytes = new(StringComparer.Ordinal);
     private readonly Task _run;
+    private readonly TaskCompletionSource _recoveryHandshakeStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _allowRecoveryHandshake = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private int _hidden;
     public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
     public PhantomOrigin() { _listener.Start(); _run = AcceptAsync(); }
     public OutputSettings Output(string id) => new(id, "127.0.0.1", Port, "/next-" + id, "loopback-fixture-password");
     public void HidePhantom() => Volatile.Write(ref _hidden, 1);
-    public long Bytes(string name) => _bytes.GetValueOrDefault(name);
+    public long Bytes(string mount) => _bytes.GetValueOrDefault(mount);
+    public int SourceAttempts(string mount) => _connections.GetValueOrDefault(mount);
+    public Task RecoveryHandshakeStarted => _recoveryHandshakeStarted.Task;
+    public void AllowRecoveryHandshake() => _allowRecoveryHandshake.TrySetResult();
     private async Task AcceptAsync()
     {
         try { while (!_stop.IsCancellationRequested) { var client = await _listener.AcceptTcpClientAsync(_stop.Token); _clients.Add(HandleAsync(client)); } }
@@ -43,7 +48,12 @@ internal sealed class PhantomOrigin : IAsyncDisposable
             if (method == "PUT" && (route is "/next-phantom" or "/next-peer"))
             {
                 var count = _connections.AddOrUpdate(route, 1, (_, value) => value + 1);
-                if (route == "/next-phantom" && count > 1) Volatile.Write(ref _hidden, 0);
+                if (route == "/next-phantom" && count > 1)
+                {
+                    _recoveryHandshakeStarted.TrySetResult();
+                    await _allowRecoveryHandshake.Task.WaitAsync(_stop.Token);
+                    Volatile.Write(ref _hidden, 0);
+                }
                 await stream.WriteAsync(Encoding.ASCII.GetBytes("HTTP/1.1 100 Continue\r\n\r\n"), _stop.Token);
                 var buffer = new byte[16384]; int length;
                 while ((length = await stream.ReadAsync(buffer, _stop.Token)) > 0)
