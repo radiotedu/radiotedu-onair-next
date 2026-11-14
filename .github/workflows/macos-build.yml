@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
-concurrency:
-  group: macos-build-${{ github.ref }}
-  cancel-in-progress: false
 jobs:
   macos:
+    concurrency:
+      group: macos-build-${{ github.ref }}-${{ matrix.rid }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:

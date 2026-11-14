@@ -18,7 +18,7 @@ permissions:
   contents: read
 concurrency:
   group: windows-build-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   public-continuity:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.public_continuity_only }}
@@ -220,24 +220,6 @@ jobs:
         with:
           name: windows-codec-runtime
           path: artifacts/windows-codec-runtime
-      - name: Qualify real float PCM and isolated audio codecs
-        run: ./scripts/Test-WindowsAudio.ps1 -BuildRoot "$env:ONAIR_BUILD_BIN" -CodecRuntimeRoot ./artifacts/windows-codec-runtime
-      - name: Retain real isolated audio qualification
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: windows-real-audio-qualification
-          path: artifacts/windows-audio/summary.json
-          if-no-files-found: warn
-      - name: Qualify isolated Windows service lifecycle
-        run: ./scripts/Test-WindowsService.ps1 -BuildRoot "$env:ONAIR_BUILD_BIN"
-      - name: Retain isolated service qualification
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: windows-service-qualification
-          path: artifacts/service-smoke/summary.json
-          if-no-files-found: warn
       - name: Publish self-contained Windows development package
         run: ./scripts/Package-Windows.ps1 -CodecRuntimeRoot artifacts/windows-codec-runtime
       - name: Build native desktop and Windows setup executable
@@ -257,6 +239,24 @@ jobs:
         with:
           name: windows-operator-ui
           path: artifacts/operator-ui
+          if-no-files-found: warn
+      - name: Qualify real float PCM and isolated audio codecs
+        run: ./scripts/Test-WindowsAudio.ps1 -BuildRoot "$env:ONAIR_BUILD_BIN" -CodecRuntimeRoot ./artifacts/windows-codec-runtime
+      - name: Retain real isolated audio qualification
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-real-audio-qualification
+          path: artifacts/windows-audio/summary.json
+          if-no-files-found: warn
+      - name: Qualify isolated Windows service lifecycle
+        run: ./scripts/Test-WindowsService.ps1 -BuildRoot "$env:ONAIR_BUILD_BIN"
+      - name: Retain isolated service qualification
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-service-qualification
+          path: artifacts/service-smoke/summary.json
           if-no-files-found: warn
       - name: Retain Windows installer
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
