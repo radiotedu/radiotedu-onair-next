@@ -74,9 +74,11 @@
           $('mic-level').value=Math.min(1,peak);
           $('mic-level-text').textContent=peak>0?Math.max(-96,20*Math.log10(peak)).toFixed(1)+' dBFS':'Silent';
           if(socket?.readyState===WebSocket.OPEN) {
-            if(!same(liveOwner,context()) || socket.bufferedAmount>15360 || outstanding>=8) {
-              endLive('Microphone connection could not keep up. Music continues. Choose Go live to reconnect.');return;
-            }
+            if(!same(liveOwner,context())) {endLive('Channel changed. Microphone released.');return;}
+            // A busy renderer may deliver several capture messages together. Drop
+            // excess frames instead of disconnecting or replaying a stale backlog.
+            // The independent acknowledgement watchdog still closes a stalled link.
+            if(socket.bufferedAmount>15360 || outstanding>=8) return;
             socket.send(event.data);outstanding++;
           }
         };
