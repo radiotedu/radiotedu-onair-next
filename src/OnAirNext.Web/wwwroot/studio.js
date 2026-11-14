@@ -4,7 +4,7 @@
   const roster = [{id:'1',name:'Classic'},{id:'2',name:'Lofi'},{id:'4',name:'Pop'},{id:'5',name:'Cazz'},{id:'8',name:'Rock'},{id:'9',name:'Energize'},{id:'10',name:'Situation'},{id:'11',name:'Main Character'}];
   const state = {page:'air',station:'9',engine:null,stations:[],session:null,autoConnect:true,discovering:false,sampleAt:0,polling:false,busy:false,library:null,offset:0,query:'',folder:null,folderGeneration:0,pending:[],stopTarget:null,folderTarget:null,folderSource:null,editTarget:null,assetStateTarget:null,controller:null,consoleClosed:false,upload:null,uploadSelection:null};
   const migration={engine:null,preview:null,loading:false,busy:false,key:null,selects:new Map(),pending:null,submissionError:null};
-  let brandingUI=null,cueUI=null,programmeUI=null,crossfadeUI=null;
+  let brandingUI=null,cueUI=null,programmeUI=null,crossfadeUI=null,microphoneUI=null;
   let outputProfile=null,outputBusy=false;
   function renderOutputs(){
     const stopped=fresh()&&state.stations.length===8&&state.stations.every(s=>s.State==='Stopped'&&!s.RequestedRunning&&s.Outputs.every(o=>o.State==='Stopped'&&!o.EncoderPid&&!o.QueuedBlocks));
@@ -115,7 +115,7 @@
     $('engine-label').replaceChildren(document.createTextNode(connected?'Engine connected':'Engine not connected'),element('small','',connected?'Isolated development engine':'Existing broadcasts unchanged'));
     $('disconnect-engine').disabled=!state.engine;
     $('retry-command').hidden=!pending();$('retry-command').disabled=!connected||state.busy;
-  libraryControls();renderProgrammeMeter();brandingUI?.update();cueUI?.update();programmeUI?.update();crossfadeUI?.update();
+  microphoneUI?.update();libraryControls();renderProgrammeMeter();brandingUI?.update();cueUI?.update();programmeUI?.update();crossfadeUI?.update();
   }
   function libraryControls(){
     const enabled=fresh()&&!state.busy&&!pending();$('choose-folder').disabled=!enabled;$('add-files').disabled=!enabled||!state.library?.canImportFiles;
@@ -775,6 +775,7 @@
   $('reports-prev').addEventListener('click',()=>{reports.offset=Math.max(0,reports.offset-32);void loadReports();});
   $('reports-next').addEventListener('click',()=>{reports.offset+=32;void loadReports();});
   const reportToday=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Istanbul',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(part=>[part.type,part.value]));$('report-day').value=reportToday.year+'-'+reportToday.month+'-'+reportToday.day;$('report-day').max='9998-12-31';$('report-year').value=reportToday.year;for(const station of roster){const option=element('option','',station.name);option.value=station.id;$('report-station').append(option);}renderReports();
+  microphoneUI=RadioTeduMicrophone.create({context:()=>({engine:state.engine,station:state.station,name:stationName(),fresh:fresh(),running:current()?.State==='Running',supported:state.controller?.capabilities?.includes('live-microphone-v1')===true,token:state.session?.token})});
   cueUI=RadioTeduCue.create({api,
     context:()=>({engine:state.engine,fresh:fresh(),busy:state.busy,supported:state.controller?.capabilities?.includes('private-cue-v1')===true}),
     stream:(body,signal)=>fetch('/api/private-cue',{method:'POST',headers:{'Content-Type':'application/json','X-Studio-Token':state.session?.token??''},body:JSON.stringify(body),credentials:'same-origin',signal})

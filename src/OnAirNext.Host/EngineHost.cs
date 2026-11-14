@@ -73,7 +73,7 @@ internal static class EngineHost
         var brandingStations=config.Stations.Where(x=>x.Repeat).Select(x=>x.Id).ToArray();
         var brandingKinds=StationBranding.InventoryKinds(brandingStations);
         var libraryInventories=brandingStations.Concat(brandingKinds.Keys).ToArray();
-        await using var library = new StationLibrary(journal, config.Ffmpeg, config.DataRoot, libraryInventories,contentKinds:brandingKinds);
+        await using var library = new StationLibrary(journal, config.Ffmpeg, config.DataRoot, libraryInventories,contentKinds:brandingKinds, allowAssignedFolderUploads:serviceMode && config.Commissioning);
         using var branding = new StationBranding(journal,library,brandingStations);
         using var queues = new StationQueues(journal,library,brandingStations);
         var crossfades = new StationCrossfades(journal,config.Stations);
@@ -127,6 +127,7 @@ internal static class EngineHost
             await using var reports = new ReportExports(journal, config.Stations.Select(station => station.Id));
             await reports.InitializeAsync();
             await using var reportServer = new ReportPipeServer(config.PipeName, serviceMode, servicePolicy, reports, stop.Token);
+            await using var microphone = new MicrophonePipeServer(config.PipeName, serviceMode, servicePolicy, coordinator.Microphone, stop.Token);
             await using var privateCue=new PrivateCuePipeServer(config.PipeName,serviceMode,servicePolicy,library,config.Ffmpeg,stop.Token);
             await using var legacyPreviews = new LegacyImportPreviews(config.DataRoot, config.Stations.Select(station => station.Id),
                 () => coordinator.Snapshot().All(station => station.State == "Stopped" && station.Outputs.Count == 0));
@@ -174,7 +175,7 @@ internal static class EngineHost
                                         })).ToArray()
                                     } : null,
                                     controller = new { mode = serviceMode ? "windows-service" : "developer", service = serviceMode ? ServiceEndpoint.Name : null,
-                            capabilities = new[] { "legacy-music-assignment-v1", RecoveryCompatibility.HeldRotationFeature, "branding-library-v1", "private-cue-v1", RecoveryCompatibility.StationQueueFeature, RecoveryCompatibility.ProgrammeAutomationFeature, RecoveryCompatibility.CrossfadeFeature, "commissioning-output-profile-v1", "commissioning-output-roster-v1", "programme-drafts-v1", "programme-execution-v1", "crossfade-settings-v1" } } });
+                            capabilities = new[] { "legacy-music-assignment-v1", RecoveryCompatibility.HeldRotationFeature, "branding-library-v1", "private-cue-v1", RecoveryCompatibility.StationQueueFeature, RecoveryCompatibility.ProgrammeAutomationFeature, RecoveryCompatibility.CrossfadeFeature, "commissioning-output-profile-v1", "commissioning-output-roster-v1", "programme-drafts-v1", "programme-execution-v1", "crossfade-settings-v1", "live-microphone-v1" } } });
                                 break;
                             case "commission-output-profile" when serviceMode && OperatingSystem.IsWindows() && request.OutputProfile is { } outputProfile:
                                 CommissioningOutputStore.RequireAllDisarmed(coordinator.Snapshot());

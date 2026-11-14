@@ -23,6 +23,7 @@ public sealed class StationLibrary : IAsyncDisposable
         { ".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".aif", ".aiff", ".wma", ".mp4" };
     private readonly EventJournal _journal;
     private readonly string _dataRoot;
+    private readonly bool _allowAssignedFolderUploads;
     private readonly Func<string, CancellationToken, Task<AudioMetadata>> _probe;
     private readonly LibraryAudioProbe? _audioProbe;
     private readonly HashSet<string> _stations;
@@ -42,8 +43,9 @@ public sealed class StationLibrary : IAsyncDisposable
 
     public StationLibrary(EventJournal journal, string ffmpeg, string dataRoot, IEnumerable<string> stations,
         Func<string, CancellationToken, Task<AudioMetadata>>? probe = null,
-        IReadOnlyDictionary<string, ContentKind>? contentKinds = null)
+        IReadOnlyDictionary<string, ContentKind>? contentKinds = null, bool allowAssignedFolderUploads = false)
     {
+        _allowAssignedFolderUploads = allowAssignedFolderUploads;
         _journal = journal; _dataRoot = dataRoot; _stations = stations.ToHashSet(StringComparer.Ordinal);
         var kinds = contentKinds is null ? new Dictionary<string, ContentKind>(StringComparer.Ordinal)
             : contentKinds.ToDictionary(x=>x.Key,x=>x.Value,StringComparer.Ordinal);
@@ -121,7 +123,7 @@ public sealed class StationLibrary : IAsyncDisposable
     }
     public Task UseManagedRootAsync(string station, string command) => SetRootAsync(station, ManagedRoot(station), command);
     private string ManagedRoot(string station) => Path.Combine(_dataRoot, "music", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(station)))[..16]);
-    public bool CanImportFiles(LibraryRoot? root) => root is null || IsPrivateFolder(root.Path);
+    public bool CanImportFiles(LibraryRoot? root) => root is null || IsPrivateFolder(root.Path) || _allowAssignedFolderUploads && _stations.Contains(root.StationId);
     private bool IsPrivateFolder(string root) => Path.GetFullPath(root).StartsWith(Path.TrimEndingDirectorySeparator(Path.GetFullPath(_dataRoot)) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     public void Wake() { try { _wake.Release(); } catch (SemaphoreFullException) { } }
     public async Task RescanAsync(string station, string command)
@@ -262,14 +264,15 @@ public sealed class StationLibrary : IAsyncDisposable
         var root = _journal.LibraryRoots().SingleOrDefault(x => x.StationId == job.StationId && x.Revision == job.Revision)
             ?? throw new InvalidOperationException("The music folder changed. Import these files again into the current folder.");
         _status[job.StationId] = new("Importing", null, null);
-        var writable = IsPrivateFolder(root.Path);
+        var writable = CanImportFiles(root);
         if (writable)
         {
             // Reject junction/symlink ancestors before creating or writing any destination.
             for (DirectoryInfo? parent = new(root.Path); parent is not null; parent = parent.Parent)
                 if (parent.Exists && (parent.Attributes & FileAttributes.ReparsePoint) != 0)
-                    throw new IOException("Choose a private music folder without folder links.");
-            Directory.CreateDirectory(root.Path);
+                    throw new IOException("Choose a music folder without folder links.");
+            if (IsPrivateFolder(root.Path)) Directory.CreateDirectory(root.Path);
+            else if (!Directory.Exists(root.Path)) throw new DirectoryNotFoundException("The assigned live folder is unavailable; reconnect its drive before retrying.");
         }
         else if (!Directory.Exists(root.Path)) throw new DirectoryNotFoundException("The external live folder is unavailable.");
         if ((File.GetAttributes(root.Path) & FileAttributes.ReparsePoint) != 0) throw new IOException("Choose a real folder, rather than a folder link.");

@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/private-cue.css">
   <link rel="stylesheet" href="/programme-drafts.css">
   <script src="/programme-editor-recovery.js" defer></script><script src="/programme-publication-state.js" defer></script><script src="/programme-publication.js" defer></script><script src="/programme-drafts.js" defer></script>
- <script src="/programme-meter.js" defer></script><script src="/branding.js" defer></script><script src="/crossfade.js" defer></script><script src="/private-cue.js" defer></script><script src="/queue.js" defer></script><script src="/studio.js" defer></script>
+ <script src="/programme-meter.js" defer></script><script src="/branding.js" defer></script><script src="/crossfade.js" defer></script><script src="/private-cue.js" defer></script><script src="/queue.js" defer></script><script src="/microphone.js" defer></script><script src="/studio.js" defer></script>
 </head>
 <body>
 <svg class="sprite" aria-hidden="true"><defs>
@@ -83,7 +83,16 @@
       <div class="level-cell"><span>Max true peak <small>dBTP</small></span><strong id="meter-peak">—</strong><div class="level-bar" id="bar-peak" role="meter" aria-label="Maximum true peak" aria-valuemin="-60" aria-valuemax="3" aria-valuetext="No measurement"><span></span></div></div>
      </div><div class="meter-summary"><span id="meter-window">1-hour continuous windows</span><span>LRA <strong id="meter-range">—</strong> LU</span><button class="text-button" id="meter-history" disabled>History</button></div><p class="meter-note" id="playback-audit-note">Playback history status unavailable.</p><p class="meter-note" id="limiter-processing">Final-mix limiter status unavailable.</p><p class="meter-note" id="source-processing">Source gain appears during playback.</p><p class="meter-target">Before encoding · Target −23 LUFS · Ceiling −1 dBTP</p><p class="meter-note" id="meter-note">Start a station to measure its final programme mix.</p></section>
      <section class="panel"><div class="panel-heading"><h2>OUTPUTS</h2><span class="number-badge" id="output-count">—</span></div><div id="output-rows" class="output-empty"><svg><use href="#i-link"/></svg><span>Output status unavailable</span><small>Connect to view encoder transport.</small></div></section>
-     <section class="panel microphone-panel"><div class="panel-heading"><h2>LIVE MICROPHONE</h2><span class="quiet">NOT CONFIGURED</span></div><div class="microphone-body"><svg><use href="#i-mic"/></svg><p>Microphone controls are being built.</p><button class="button" disabled>Go live</button></div></section>
+     <section class="panel microphone-panel" aria-label="Live microphone"><div class="panel-heading"><h2>LIVE MICROPHONE</h2><span id="mic-state" class="quiet" role="status">Off</span></div><div class="mic-controls">
+<label for="mic-device">Input device</label><select id="mic-device" aria-label="Microphone input device"></select><button id="mic-refresh" class="text-button">Refresh devices</button>
+<label for="mic-gain">Input gain <output id="mic-gain-value">0 dB</output></label><input id="mic-gain" type="range" min="-24" max="18" step="1" value="0">
+<meter id="mic-level" min="0" max="1" value="0" aria-label="Microphone peak level"></meter><span id="mic-level-text">No input</span>
+<label><input type="checkbox" id="mic-monitor" disabled> Hear private test (headphones only)</label>
+<div class="toolbar"><button id="mic-prepare" class="button">Test microphone</button><button id="mic-mute" class="button" aria-pressed="false" disabled>Mute</button></div>
+<div class="toolbar"><button id="mic-live" class="button primary" disabled>Go live</button><button id="mic-end" class="button" disabled>End live</button><button id="mic-close" class="text-button" disabled>Release device</button></div>
+<p id="mic-feedback" role="status">Microphone stays off until you test and explicitly go live. Closing this page returns to automation.</p>
+</div></section>
+<dialog id="mic-confirm"><form method="dialog"><h2>Open microphone on air?</h2><p id="mic-confirm-text"></p><div class="toolbar"><button class="button" value="cancel">Cancel</button><button class="button primary" value="live">Go live</button></div></form></dialog>
     </aside>
    </div>
   </section>

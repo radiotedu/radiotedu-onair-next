@@ -45,7 +45,7 @@ async function ensureConsole(){
 }
 function newWindow(){
  const w=new BrowserWindow({width:1450,height:920,minWidth:900,minHeight:600,show:false,title:'RadioTEDU OnAir Next',icon:path.join(__dirname,'icon.png'),
-  webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+  webPreferences:{backgroundThrottling:false,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
  w.webContents.on('will-navigate',(event,url)=>{if(!allowedNavigation(url))event.preventDefault()});
  w.webContents.on('will-redirect',(event,url)=>{if(!allowedNavigation(url))event.preventDefault()});
  w.webContents.setWindowOpenHandler(()=>({action:'deny'}));

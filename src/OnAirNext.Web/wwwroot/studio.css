@@ -36,3 +36,5 @@ dialog{width:min(650px,calc(100vw - 40px));border:1px solid #455c74;border-radiu
 @media(max-width:520px){.report-form{grid-template-columns:1fr;padding:16px}.report-feedback{padding:0 16px 16px}.report-receipt>div{grid-template-columns:1fr;gap:5px}}
 
 .migration-panel .setup-body{display:grid;gap:14px}.migration-panel table{min-width:880px}.migration-panel td{vertical-align:top;max-width:360px}.migration-panel .asset-path{overflow-wrap:anywhere;white-space:normal;margin:0 0 7px}.migration-panel td select{min-width:170px}.migration-panel #migration-backup{overflow-wrap:anywhere}
+
+.mic-controls{display:grid;gap:10px;padding:16px}.mic-controls select{max-width:100%;min-width:0}.mic-controls meter{width:100%}.mic-controls .toolbar{flex-wrap:wrap}.mic-controls p{font-size:12px;line-height:1.5}.mic-is-live{color:#d13333;font-weight:700}
