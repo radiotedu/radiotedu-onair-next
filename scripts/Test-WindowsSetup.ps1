@@ -42,6 +42,8 @@ try{
   $source=if($PackageRoot){Join-Path ([IO.Path]::GetFullPath($PackageRoot)) $pair.Folder}else{Join-Path $BuildRoot ($pair.Project+'/release')}
   foreach($entry in Get-ChildItem -LiteralPath $source -Force){Copy-Item -LiteralPath $entry.FullName -Destination $destination -Recurse}
  }
+ $bundleFolders=@('bin','console','setup')
+ if($PackageRoot -and (Test-Path -LiteralPath (Join-Path $PackageRoot 'desktop'))){Copy-Item -LiteralPath (Join-Path $PackageRoot 'desktop') -Destination (Join-Path $fixture 'desktop') -Recurse;$bundleFolders+='desktop'}
  # Explicit synthetic provider for file/SCM tests; real provider preparation has a separate CI receipt.
  $runtimePackage=Join-Path $fixture 'runtime';$runtime=Join-Path $runtimePackage 'bin';$null=New-Item -ItemType Directory -Path $runtime
  foreach($entry in Get-ChildItem -LiteralPath (Join-Path $BuildRoot 'OnAirNext.Lab/release') -Force){Copy-Item -LiteralPath $entry.FullName -Destination $runtime -Recurse}
@@ -55,7 +57,7 @@ try{
  $providerManifest=@{schemaVersion=1;target='win-x64-listing-only-software-fixture';dependencyLockSha256=(Get-FileHash -LiteralPath (Join-Path $runtimePackage 'windows-codec.lock.json') -Algorithm SHA256).Hash;buildScriptSha256=(Get-FileHash -LiteralPath (Join-Path $runtimePackage 'Sources/build-windows-codecs.py') -Algorithm SHA256).Hash;files=$runtimeFiles}
  $providerManifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $runtimePackage 'runtime-manifest.json') -Encoding utf8NoBOM
  Copy-Item -LiteralPath (Join-Path $runtimePackage 'runtime-manifest.json') -Destination (Join-Path $fixture 'setup/codec-runtime-reference.json') -Force
- $files=@(foreach($folder in @('bin','console','setup')){foreach($file in Get-ChildItem -LiteralPath (Join-Path $fixture $folder) -Recurse -File){@{Path=[IO.Path]::GetRelativePath($fixture,$file.FullName).Replace('\','/');Bytes=$file.Length;Sha256=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash}}})
+ $files=@(foreach($folder in $bundleFolders){foreach($file in Get-ChildItem -LiteralPath (Join-Path $fixture $folder) -Recurse -File){@{Path=[IO.Path]::GetRelativePath($fixture,$file.FullName).Replace('\','/');Bytes=$file.Length;Sha256=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash}}})
  @{Source=$env:GITHUB_SHA;Files=$files}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $fixture 'bundle.json') -Encoding utf8NoBOM
  $request=Join-Path $fixture 'request.json';@{RuntimeFolder=$runtimePackage;StartService=$true}|ConvertTo-Json|Set-Content -LiteralPath $request -Encoding utf8NoBOM
  $setup=Join-Path $fixture 'setup/OnAirNext.Setup.exe'
@@ -80,8 +82,10 @@ try{
  Check 'Initial installation contains eight stopped channels and no outputs' ($config.Stations.Count -eq 8 -and @($config.Stations|Where-Object {$_.AutoStart -or $_.Outputs.Count -ne 0}).Count -eq 0)
  $service=Get-CimInstance Win32_Service -Filter ("Name='"+$serviceName+"'")
  Check 'Only the isolated LocalService image is registered' ($service.StartName -eq 'NT AUTHORITY\LocalService' -and $service.PathName.StartsWith('"'+[IO.Path]::GetFullPath((Join-Path $install 'bin/OnAirNext.Host.exe'))+'"',[StringComparison]::OrdinalIgnoreCase))
- $lab=Join-Path $BuildRoot 'OnAirNext.Lab/release/OnAirNext.Lab.exe';$deadline=[DateTime]::UtcNow.AddSeconds(45);$state=$null
- do{try{$state=(Run $lab @('--service-probe','status'))|ConvertFrom-Json;if($state.stations.Count -eq 8){break}}catch{};Start-Sleep -Milliseconds 200}while([DateTime]::UtcNow -lt $deadline)
+ $lab=Join-Path $BuildRoot 'OnAirNext.Lab/release/OnAirNext.Lab.exe';$deadline=[DateTime]::UtcNow.AddSeconds(45);$state=$null;$probeFailure=$null
+ do{try{$state=(Run $lab @('--service-probe','status'))|ConvertFrom-Json;if($state.stations.Count -eq 8){break};$probeFailure=$state|ConvertTo-Json -Depth 5 -Compress}catch{$probeFailure=$_.Exception.Message};Start-Sleep -Milliseconds 200}while([DateTime]::UtcNow -lt $deadline)
+ if($state.stations.Count -ne 8){throw ('Installed service status failed: '+$probeFailure)}
+ if($bundleFolders -contains 'desktop'){Check 'Complete native desktop payload is installed with reviewed hashes' (@($files|Where-Object {$_.Path.StartsWith('desktop/')}|Where-Object {-not(Test-Path -LiteralPath (Join-Path $install $_.Path)) -or (Get-FileHash -LiteralPath (Join-Path $install $_.Path) -Algorithm SHA256).Hash -ne $_.Sha256}).Count -eq 0 -and (Test-Path -LiteralPath (Join-Path $install 'desktop/RadioTEDU OnAir Next.exe')))}
  Check 'Installed engine is authenticated and all eight requested states are stopped' ($state.stations.Count -eq 8 -and @($state.stations|Where-Object RequestedRunning).Count -eq 0)
  $runtimeHash=(Get-FileHash -LiteralPath (Join-Path $runtime 'ffmpeg.exe') -Algorithm SHA256).Hash
  if($PackageRoot){$hostProcess=[Diagnostics.Process]::GetProcessById($service.ProcessId);try{Check 'Installed service uses its packaged runtime without global dotnet' (@($hostProcess.Modules|Where-Object {$_.ModuleName -eq 'coreclr.dll' -and $_.FileName.StartsWith((Join-Path $install 'bin')+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)}).Count -eq 1)}finally{$hostProcess.Dispose()}}

@@ -23,7 +23,10 @@ internal static partial class ServiceProbe
         using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(10));
         await using var pipe=ServicePipeClient.Create(ServiceEndpoint.Pipe);
         await pipe.ConnectAsync(deadline.Token); ServicePipeClient.AuthenticateServer(pipe,ServiceEndpoint.Pipe);
-        var bytes=JsonSerializer.SerializeToUtf8Bytes(command);
+        var request=JsonSerializer.SerializeToNode(command)!.AsObject();
+        if(request["Action"]?.GetValue<string>()=="status" && !request.ContainsKey("JournalFeatures"))
+            request["JournalFeatures"]=JsonSerializer.SerializeToNode(new[]{RecoveryCompatibility.HeldRotationFeature,RecoveryCompatibility.StationQueueFeature,RecoveryCompatibility.ProgrammeAutomationFeature,RecoveryCompatibility.CrossfadeFeature});
+        var bytes=JsonSerializer.SerializeToUtf8Bytes(request);
         await pipe.WriteAsync(bytes,deadline.Token);await pipe.WriteAsync("\n"u8.ToArray(),deadline.Token);
         var response=await PipeFrames.ReadAsync(pipe,524288,deadline.Token)??throw new EndOfStreamException("Service probe was not acknowledged.");
         using var document = JsonDocument.Parse(response); return document.RootElement.Clone();

@@ -43,3 +43,5 @@ The desktop window can hide in the tray while capture continues; exiting the app
 The Windows service and macOS daemon supervise the engine independently of the UI. Each output retries its own connection; microphone operations do not restart outputs or reset the playlist. Station running intent persists, whereas microphone activation does not.
 
 Read source connection state separately from listener audio. Unit, loopback and synthetic microphone tests do not certify a physical microphone, a particular sound device, EBU conformance across every source, or uninterrupted operation during power/ISP/server failure. Complete operator listening and a sustained commissioning run on a non-live installation before deploying a new engine to an established broadcaster.
+
+Application-only maintenance requires recovery contract version 2 in both the installed image and its replacement. Both must declare support for held rotation, queued items, scheduled programmes and crossfade journals. Older undeclared packages are rejected instead of risking an incompatible rollback; migration from such installations remains a separate reviewed operation.

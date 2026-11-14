@@ -133,11 +133,13 @@ internal static class WindowsAppUpdater
     }
     private static async Task StageAsync(AppUpdateReview review,UpdateSwap swap,SecurityIdentifier account,string package)
     {
-        await UpdateSwap.VerifyImageAsync(swap.InstallRoot,review.Files.Original);
+        var originalBundle=await UpdateSwap.VerifyImageAsync(swap.InstallRoot,review.Files.Original);
+        var originalContractFile=originalBundle.Files.SingleOrDefault(f=>f.Path=="setup/maintenance-contract.json")??throw new IOException("The rollback image has no recovery compatibility contract.");
+        (await SetupPaths.ReadVerifiedAsync<MaintenanceContract>(SetupPaths.Resolve(swap.InstallRoot,originalContractFile.Path),originalContractFile.Sha256,CancellationToken.None)).RequireCurrentReader();
         var bundle=await SetupPaths.VerifyBundleAsync(package,review.Files.Replacement.BundleSha256,CancellationToken.None);
         var contractFile=bundle.Files.SingleOrDefault(f=>f.Path=="setup/maintenance-contract.json")??throw new IOException("The replacement maintenance contract is missing.");
         var contract=await SetupPaths.ReadVerifiedAsync<MaintenanceContract>(SetupPaths.Resolve(package,contractFile.Path),contractFile.Sha256,CancellationToken.None);
-        if(contract!=new MaintenanceContract(1,1,true))throw new InvalidOperationException("This update needs an explicit journal migration.");
+        contract.RequireCurrentReader();
         var bytes=bundle.Files.Sum(f=>f.Bytes)+review.Files.Replacement.RuntimeFiles.Sum(f=>f.Bytes);
         if(new DriveInfo(Path.GetPathRoot(swap.InstallRoot)!).AvailableFreeSpace<bytes+2L*1024*1024*1024)throw new IOException("Application maintenance needs the candidate size plus 2 GiB free.");
         WindowsInstaller.CreateProtected(swap.CandidateRoot,account,false);var copied=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
