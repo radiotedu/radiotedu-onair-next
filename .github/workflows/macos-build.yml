@@ -1,12 +1,14 @@
 name: macOS engine and setup qualification
 on:
   pull_request:
+  push:
+    tags: ['v*']
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: macos-build-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   macos:
     strategy:
@@ -46,10 +48,16 @@ jobs:
       - name: Build pinned shared audio runtime
         if: steps.codecs.outputs.cache-hit != 'true'
         run: python3 scripts/codec/build-macos-codecs.py
+      - name: Preserve completed native codec build before downstream checks
+        if: steps.codecs.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830
+        with:
+          path: artifacts/macos-codec-runtime
+          key: macos-codecs-${{ matrix.rid }}-${{ hashFiles('scripts/codec/build-macos-codecs.py','scripts/codec/build-windows-codecs.py','scripts/codec/windows-codec.lock.json') }}
       - name: Qualify continuous audio, microphone fallback and reconnect on private Icecast
         run: |
           for scenario in baseline live recovery; do
-            dotnet artifacts/build/bin/OnAirNext.Lab/release/OnAirNext.Lab.dll --ffmpeg "$PWD/artifacts/macos-codec-runtime/bin/ffmpeg" --dotnet "$(command -v dotnet)" --icecast-root "$(brew --prefix icecast)" --scenario "$scenario" --duration-seconds 12
+            dotnet run --project tests/OnAirNext.Lab/OnAirNext.Lab.csproj -c Release --no-build -- --ffmpeg "$PWD/artifacts/macos-codec-runtime/bin/ffmpeg" --dotnet "$(command -v dotnet)" --icecast-root "$(brew --prefix icecast)" --scenario "$scenario" --duration-seconds 12
           done
       - name: Build complete native application and macOS setup
         run: python3 scripts/Package-MacOS.py ${{ matrix.rid }}

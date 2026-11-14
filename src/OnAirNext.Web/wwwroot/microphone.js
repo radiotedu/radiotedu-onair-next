@@ -117,6 +117,6 @@
     window.addEventListener('pagehide',()=>{void close();});
     setInterval(()=>{if(socket && Date.now()-lastAck>1500)endLive('Microphone acknowledgement timed out. Music continues.');},250);
     void devices();render();
-    return {update(){const c=context();if(owner&&!same(owner,c)){void close('Channel changed. Microphone released; test again for the selected channel.');return;}if(socket&&!eligible(c))endLive('Station status is unavailable. Microphone ended; music automation remains independent.');render();}};
+    return {active:()=>!!socket,update(){const c=context();if(owner&&!same(owner,c)){void close('Channel changed. Microphone released; test again for the selected channel.');return;}if(socket&&!eligible(c))endLive('Station status is unavailable. Microphone ended; music automation remains independent.');render();}};
   }};
 })();

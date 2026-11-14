@@ -40,7 +40,7 @@ app.Use(async (context, next) =>
     var request = context.Request;
     if (context.Connection.RemoteIpAddress is not { } address || !IPAddress.IsLoopback(address) ||
         request.Host.Host != "127.0.0.1") { context.Response.StatusCode = 403; return; }
-    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
+    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ws://" + request.Host + "; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["Cache-Control"] = "no-store";
     context.Response.Headers["Referrer-Policy"] = "no-referrer";

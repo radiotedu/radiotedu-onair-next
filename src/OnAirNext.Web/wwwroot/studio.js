@@ -235,7 +235,7 @@
     }
   }
   async function poll(){
-    if(state.polling||!state.engine||document.hidden)return;state.polling=true;const engine=state.engine;
+    if(state.polling||!state.engine||(document.hidden&&!microphoneUI?.active()))return;state.polling=true;const engine=state.engine;
     try{const result=await api('/api/status?engine='+encodeURIComponent(engine));if(engine!==state.engine)return;const previous=state.stations.map(s=>s.Id).join(',');state.stations=result.stations??[];state.controller=result.controller??null;outputProfile=result.commissioning??null;state.sampleAt=Date.now();if(!state.stations.some(s=>s.Id===state.station)&&state.stations.length)state.station=state.stations[0].Id;if(previous!==state.stations.map(s=>s.Id).join(','))stationTabs();text('audit-pending',String(result.audit?.PendingEvents??'—'));text('audit-rejected',String(result.audit?.RejectedEvents??'—'));text('audit-error',result.audit?.Error??'None reported');}
     catch(error){message('Status unavailable: '+error.message);}
     finally{state.polling=false;renderStatus();renderOutputs();void loadQueue();if(state.page==='reports')void loadReports();if(state.page==='system')void loadMigration();}

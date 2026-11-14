@@ -25,11 +25,30 @@ internal static class MacService
     {
         if(!OperatingSystem.IsMacOS())throw new PlatformNotSupportedException("macOS installation only.");
         if(Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory)!=Path.Combine(Resources,"engine"))throw new UnauthorizedAccessException("Install the application in Applications first.");
+        VerifyAudioRuntime();
         Directory.CreateDirectory(Root,PrivateDirectory);Directory.CreateDirectory(Data,PrivateDirectory);
         RequirePrivate(Root,true);RequirePrivate(Data,true);
         if(File.Exists(ConfigPath)){RequireInstalled(ConfigPath);return;}
         var stations=new[]{"1","2","4","5","8","9","10","11"}.Select(id=>new StationSettings(id,[],[],AutoStart:false,CrossfadeSeconds:id=="1"?0:3)).ToList();
         WritePrivate(ConfigPath,JsonSerializer.SerializeToUtf8Bytes(new HostSettings(Path.Combine(Resources,"audio-runtime","bin","ffmpeg"),Data,Pipe,stations)));
+    }
+    private static void VerifyAudioRuntime()
+    {
+        var root=Path.Combine(Resources,"audio-runtime");
+        using var manifest=JsonDocument.Parse(File.ReadAllBytes(Path.Combine(root,"runtime-manifest.json")));
+        var expected=System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture==System.Runtime.InteropServices.Architecture.Arm64?"osx-arm64":"osx-x64";
+        if(manifest.RootElement.GetProperty("target").GetString()!=expected)throw new InvalidDataException("Install the matching native audio runtime.");
+        var paths=new HashSet<string>(StringComparer.Ordinal);
+        foreach(var entry in manifest.RootElement.GetProperty("files").EnumerateArray())
+        {
+            var relative=entry.GetProperty("path").GetString()??throw new InvalidDataException("Missing runtime path.");
+            var file=Path.GetFullPath(Path.Combine(root,relative));
+            if(!file.StartsWith(root+Path.DirectorySeparatorChar,StringComparison.Ordinal)||!paths.Add(file)||paths.Count>512)throw new InvalidDataException("Invalid runtime file list.");
+            if((File.GetAttributes(file)&FileAttributes.ReparsePoint)!=0||new FileInfo(file).Length!=entry.GetProperty("bytes").GetInt64())throw new InvalidDataException("Audio runtime file changed.");
+            using var input=File.OpenRead(file);
+            if(!Convert.ToHexString(SHA256.HashData(input)).Equals(entry.GetProperty("sha256").GetString(),StringComparison.OrdinalIgnoreCase))throw new InvalidDataException("Audio runtime checksum differs.");
+        }
+        if(!paths.Contains(Path.Combine(root,"bin","ffmpeg"))||!paths.Contains(Path.Combine(root,"bin","ffprobe")))throw new InvalidDataException("Complete audio tools are required.");
     }
     private static void RequirePrivate(string path,bool directory)
     {

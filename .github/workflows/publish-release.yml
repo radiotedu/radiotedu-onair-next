@@ -1,0 +1,22 @@
+name: Publish qualified installer preview
+on:
+  workflow_run:
+    workflows: [Windows build and unit tests, macOS engine and setup qualification]
+    types: [completed]
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: publish-installer-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' && startsWith(github.event.workflow_run.head_branch, 'v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Publish only complete matching tag qualifications
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/publish-qualified-release.cjs

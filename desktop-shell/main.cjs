@@ -23,6 +23,7 @@ function health(){return new Promise((resolve,reject)=>{
  req.on('error',err=>err.code==='ECONNREFUSED'?finish(null,null):finish(err));
 })}
 async function readReady(allowNotReady=false){const h=await health();if(!h)return null;let d;
+ if(setupPackage){const bundle=JSON.parse(await fs.readFile(path.join(setupPackage,'bundle.json'),'utf8'));if(!/^[0-9a-f]{40}$/i.test(bundle.Source||'')||!h.version?.endsWith('+'+bundle.Source))throw new Error('A different console version is open. Use Close console in its System screen, then open this setup again. Broadcasts continue in the service.');}
  try{d=JSON.parse(await fs.readFile(endpoint,'utf8'))}catch(error){if(allowNotReady&&(error.code==='ENOENT'||error instanceof SyntaxError))return null;throw new Error('Open the console using the Windows account that owns its session.')}
  if(!verifiedDescriptor(h,d))throw new Error('The console session could not be verified.');return d;
 }

@@ -76,7 +76,7 @@ internal static class WindowsInstaller
             stage="initial stopped channels";
             CreateProtected(ServiceEndpoint.EngineData,account,true);
             var config=new{Ffmpeg=ServiceEndpoint.Ffmpeg,DataRoot=ServiceEndpoint.EngineData,PipeName=ServiceEndpoint.Pipe,OperatorSid=account.Value,
-                Stations=SetupPaths.StationIds.Select(id=>new{Id=id,Playlist=Array.Empty<object>(),Outputs=Array.Empty<object>(),Repeat=true,Enabled=true,AutoStart=false}).ToArray()};
+                Stations=SetupPaths.StationIds.Select(id=>new{Id=id,Playlist=Array.Empty<object>(),Outputs=Array.Empty<object>(),Repeat=true,Enabled=true,AutoStart=false,CrossfadeSeconds=id=="1"?0:3}).ToArray()};
             await WriteNewAsync(ServiceEndpoint.ConfigPath,config);
             // Protecting the exact installation is also checked independently by the service on every boot.
             ServiceFileProtection.BootstrapInstalled(ServiceEndpoint.ConfigPath,Path.Combine(install,"bin"));
