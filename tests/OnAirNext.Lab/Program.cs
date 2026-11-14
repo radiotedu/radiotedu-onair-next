@@ -314,7 +314,7 @@ async Task PhantomAsync(CaseResult result)
     await using var origin = new PhantomOrigin();
     await using var journal = new EventJournal(Path.Combine(root, "playback.db"));
     await using var station = new StationEngine(ffmpeg, new StationSettings("phantom", fixtures,
-        [origin.Output("phantom"), origin.Output("peer")]), journal);
+        [origin.Output("phantom") with { QueueBlocks = 50 }, origin.Output("peer")]), journal);
     await station.StartAsync();
     await WaitAsync(() => station.Snapshot().Outputs.All(x => x.State == "SourceConnected") &&
         origin.Bytes("/next-phantom") > 0 && origin.Bytes("/next-peer") > 0, "Both source outputs must deliver fixture bytes.", 20);
@@ -322,6 +322,15 @@ async Task PhantomAsync(CaseResult result)
     var phantomBytes = origin.Bytes("/next-phantom");
     Check(result, peer.EncoderPid.HasValue, "The healthy peer owns an encoder.");
     origin.HidePhantom();
+    await origin.RecoveryHandshakeStarted.WaitAsync(TimeSpan.FromSeconds(75));
+    var dropsAtHandshake = station.Snapshot().Outputs[0].DroppedBlocks;
+    // With 50 blocks at 20 ms each, this fills the queue before the 3 s handshake deadline.
+    await Task.Delay(TimeSpan.FromMilliseconds(1700));
+    var pendingHandshake = station.Snapshot().Outputs[0];
+    Check(result, pendingHandshake.DroppedBlocks > dropsAtHandshake,
+        "The retry queue overflows while the origin has not accepted the source.");
+    Check(result, pendingHandshake.State == "Connecting", "Queue overflow does not cancel the pending handshake.");
+    origin.AllowRecoveryHandshake();
     await WaitAsync(() => station.Snapshot().Outputs[0].Connections >= 2 &&
         station.Snapshot().Outputs[0].State == "SourceConnected", "The hidden source must reconnect independently.", 75);
     await WaitAsync(() => origin.Bytes("/next-phantom") > phantomBytes + 1024, "Recovered output must resume sending encoded bytes.", 10);
@@ -331,6 +340,8 @@ async Task PhantomAsync(CaseResult result)
         "The healthy peer retains its original encoder and source socket.");
     Check(result, origin.Bytes("/next-peer") > peerBytes, "The healthy peer continues sending audio during recovery.");
     Check(result, origin.Bytes("/next-phantom") > phantomBytes + 1024, "The recovered output resumes sending encoded audio.");
+    Check(result, origin.SourceAttempts("/next-phantom") == 2,
+        "The first recovery handshake succeeds without an extra connection attempt.");
     result.Details["station"] = after;
 }
 
