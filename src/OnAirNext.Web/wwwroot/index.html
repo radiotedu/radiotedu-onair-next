@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>RadioTEDU — Broadcast studio</title>
+  <link rel="icon" href="/brand/onair-next.svg" type="image/svg+xml">
+<title>RadioTEDU — Broadcast studio</title>
   <link rel="stylesheet" href="/studio.css">
   <link rel="stylesheet" href="/branding.css">
   <link rel="stylesheet" href="/private-cue.css">
   <link rel="stylesheet" href="/programme-drafts.css">
   <script src="/programme-editor-recovery.js" defer></script><script src="/programme-publication-state.js" defer></script><script src="/programme-publication.js" defer></script><script src="/programme-drafts.js" defer></script>
- <script src="/programme-meter.js" defer></script><script src="/branding.js" defer></script><script src="/crossfade.js" defer></script><script src="/private-cue.js" defer></script><script src="/queue.js" defer></script><script src="/microphone.js" defer></script><script src="/studio.js" defer></script>
+ <script src="/programme-meter.js" defer></script><script src="/branding.js" defer></script><script src="/crossfade.js" defer></script><script src="/private-cue.js" defer></script><script src="/queue.js" defer></script><script src="/setup-wizard.js" defer></script><script src="/microphone.js" defer></script><script src="/studio.js" defer></script>
 </head>
 <body>
 <svg class="sprite" aria-hidden="true"><defs>
@@ -180,6 +181,18 @@
    <p class="report-footnote">Each row is an actual attempt, including interrupted and restarted attempts. Codec variants do not create duplicate plays. Open attempts remain marked incomplete. CSV exports contain every matching row; export-list pages do not limit their contents. Files stay local; automatic private-archive publishing is not configured yet.</p>
   </section>
   <section data-view="system" hidden>
+   <section class="panel setup-panel" aria-labelledby="wizard-heading"><div class="panel-heading"><h2 id="wizard-heading">GET STARTED</h2><img src="/brand/onair-next.svg" width="36" height="36" alt="OnAir Next"></div><div class="setup-body">
+    <h3>1. Install the engine</h3><p>The engine keeps broadcasting when the window closes. The guided installer checks the included audio tools and configures automatic Windows startup and recovery.</p><button type="button" id="wizard-open-installation" class="button">Open installation checks</button>
+    <h3>2. Choose music and sweepers for each channel</h3><p>Use Music folder to choose a live folder or add files. Use Sweepers to choose jingle and sweeper folders, set their cadence and save. New stable audio files are validated before rotation. Return to System to continue setup.</p>
+    <form id="wizard-form" autocomplete="off">
+    <div class="table-scroll"><table><thead><tr><th>CHANNEL</th><th>ENABLE</th><th>PRIMARY MOUNT</th><th>LOW</th><th>FLAC</th><th>MEDIA</th></tr></thead><tbody id="wizard-channels"></tbody></table></div>
+    <h3>3. Configure Icecast</h3><div class="wizard-fields"><label>Host<input id="wizard-host" maxlength="253" placeholder="stream.example.org" spellcheck="false"></label><label>Port<input id="wizard-port" type="number" min="1" max="65535" value="8000"></label><label>Source user<input id="wizard-user" maxlength="128" value="source" autocomplete="off"></label><label>Source password<input id="wizard-password" type="password" maxlength="1024" autocomplete="new-password"></label></div>
+    <p id="wizard-gate" role="status"></p><button type="button" id="wizard-review" class="button">Review destinations</button><pre id="wizard-summary" class="wizard-summary"></pre>
+    <label><input type="checkbox" id="wizard-confirm"> I own these mounts, and their former source is disconnected. Replace the saved connection profile.</label>
+    <div class="toolbar"><button type="button" id="wizard-save" class="button primary" disabled>Save reviewed connections</button><button type="button" id="wizard-clear" class="text-button">Clear unsaved password</button></div></form>
+    <h3>4. Start and verify</h3><p>After saving connections, start the stopped engine service. On Air shows the saved destinations. Start only the channels you have configured. The service remembers running channels across restarts and retries lost outputs independently.</p><button type="button" id="wizard-start-service" class="button">Start stopped service…</button><p id="wizard-feedback" role="status" aria-live="polite">Setup never starts a broadcast without your station Start action.</p>
+    <div class="developer-brand"><img src="/brand/radiotedu-logo-white.png" alt="RadioTEDU" height="28"><span>Technologies</span><span class="rtai-word" aria-label="RTAI">rt<span>ai</span></span><span>Developer · RadioTEDU Technologies / RTAI</span></div>
+   </div></section>
    <section class="panel setup-panel" aria-labelledby="outputs-heading"><div class="panel-heading"><h2 id="outputs-heading">STREAM OUTPUTS</h2><span class="state-pill" id="outputs-phase">Not connected</span></div><div class="setup-body"><p id="outputs-summary">Connect the installed engine to review its saved stream destinations.</p><label class="field-label" for="outputs-roster">Saved output roster</label><select id="outputs-roster"><option value="Existing16">Existing 16 outputs</option><option value="Expanded18">Expanded 18 outputs (requires saved settings)</option></select><div class="setup-actions"><button class="button primary" id="outputs-save" disabled>Use saved connections</button><button class="button" id="outputs-clear" disabled>Disarm all outputs for maintenance</button></div><p id="outputs-feedback" role="status" aria-live="polite">All eight channels must be stopped before changing outputs. Source passwords remain protected inside the service. Restart the engine service after saving; then read back destinations before starting channels.</p></div></section>
    <div class="page-heading"><div><div class="eyebrow">OPERATIONS</div><h1>System</h1><p class="page-description">Connect this console to the separate, local broadcasting engine.</p></div><button class="button" id="refresh-engines"><svg><use href="#i-refresh"/></svg>Refresh engines</button></div>
    <section class="panel system-panel"><div class="panel-heading"><h2>LOCAL ENGINE</h2><span class="state-pill" id="system-connection">Not connected</span></div><div class="system-body"><div class="connection-symbol"><svg><use href="#i-link"/></svg></div><div><h2>Engine connection</h2><p id="engine-discovery">Checking for isolated engines on this computer…</p><label class="field-label" for="engine-select">Available engine</label><div class="connection-form"><select id="engine-select" disabled><option>No engines available</option></select><button class="button primary" id="connect-engine" disabled>Connect</button><button class="button" id="disconnect-engine" disabled>Disconnect</button></div></div></div><dl class="properties"><div><dt>Engine runtime</dt><dd id="engine-runtime">No engine sample</dd></div></dl><div class="system-footer">The engine runs independently of this console. Connect above to review its current stations and output ownership.</div></section>

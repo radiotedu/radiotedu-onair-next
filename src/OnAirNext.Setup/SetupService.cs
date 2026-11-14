@@ -55,6 +55,13 @@ public static class SetupService
     {
         if(!service.Binary.Equals(ExpectedBinary,StringComparison.OrdinalIgnoreCase)||!service.Account.Equals(@"NT AUTHORITY\LocalService",StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("The isolated service name is already used by a different installation. No service was changed.");
     }
+    public static async Task StartStoppedAsync(CancellationToken token)
+    {
+        var service=Read()??throw new InvalidOperationException("Install the service first."); RequireOwned(service);
+        if(service.State!=1 || service.ProcessId!=0) throw new InvalidOperationException("Only a stopped service can be started here. Running broadcasts were left unchanged.");
+        if(service.StartType!=2)throw new InvalidOperationException("Resolve the saved maintenance operation before starting the service.");
+        await ScAsync(["start",ServiceEndpoint.Name],token);
+    }
     public static async Task InstallAsync(bool start,CancellationToken token)
     {
         var service=Read();if(service is null)await ScAsync(["create",ServiceEndpoint.Name,"binPath=",ExpectedBinary,"start=","auto","obj=",@"NT AUTHORITY\LocalService"],token);else RequireOwned(service);

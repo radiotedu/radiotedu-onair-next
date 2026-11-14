@@ -10,7 +10,7 @@ internal static class EngineRpc
 {
     public static bool IsIsolated(string? name) => name is not null && name.StartsWith("onair-next-dev-", StringComparison.Ordinal)
         && !name.EndsWith("-microphone", StringComparison.Ordinal) && !name.EndsWith("-files", StringComparison.Ordinal) && !name.EndsWith("-reports", StringComparison.Ordinal)&&!name.EndsWith("-cue",StringComparison.Ordinal) && name.Length <= 100 && name.All(c => char.IsAsciiLetterOrDigit(c) || c == '-');
-    public static string[] Discover() => Directory.GetFiles(@"\\.\pipe\").Select(Path.GetFileName)
+    public static string[] Discover() => OperatingSystem.IsMacOS() ? ["onair-next-dev-macos"] : Directory.GetFiles(@"\\.\pipe\").Select(Path.GetFileName)
         .OfType<string>().Where(IsIsolated).Order(StringComparer.Ordinal).ToArray();
 
     public static async Task<JsonElement> SendAsync(string engine, object command, CancellationToken token)

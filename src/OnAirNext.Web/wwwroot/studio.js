@@ -4,7 +4,7 @@
   const roster = [{id:'1',name:'Classic'},{id:'2',name:'Lofi'},{id:'4',name:'Pop'},{id:'5',name:'Cazz'},{id:'8',name:'Rock'},{id:'9',name:'Energize'},{id:'10',name:'Situation'},{id:'11',name:'Main Character'}];
   const state = {page:'air',station:'9',engine:null,stations:[],session:null,autoConnect:true,discovering:false,sampleAt:0,polling:false,busy:false,library:null,offset:0,query:'',folder:null,folderGeneration:0,pending:[],stopTarget:null,folderTarget:null,folderSource:null,editTarget:null,assetStateTarget:null,controller:null,consoleClosed:false,upload:null,uploadSelection:null};
   const migration={engine:null,preview:null,loading:false,busy:false,key:null,selects:new Map(),pending:null,submissionError:null};
-  let brandingUI=null,cueUI=null,programmeUI=null,crossfadeUI=null,microphoneUI=null;
+  let brandingUI=null,cueUI=null,programmeUI=null,crossfadeUI=null,microphoneUI=null,setupWizardUI=null;
   let outputProfile=null,outputBusy=false;
   function renderOutputs(){
     const stopped=fresh()&&state.stations.length===8&&state.stations.every(s=>s.State==='Stopped'&&!s.RequestedRunning&&s.Outputs.every(o=>o.State==='Stopped'&&!o.EncoderPid&&!o.QueuedBlocks));
@@ -110,12 +110,12 @@
     text('footer-status',connected?'Engine connected':state.engine?'Reconnecting':'Disconnected');
     text('sample-age',state.sampleAt?`Sample age ${Math.max(0,Math.floor((Date.now()-state.sampleAt)/1000))}s`:'No engine sample');
     text('system-connection',connected?'Connected':'Not connected');
-    text('engine-runtime',!connected?'No engine sample':state.engine==='onair-next-dev-service'&&state.controller?.mode==='windows-service'?'Windows service':state.controller?.mode==='developer'?'Developer host':'Not reported');
+    text('engine-runtime',!connected?'No engine sample':state.engine==='onair-next-dev-service'&&state.controller?.mode==='windows-service'?'Windows service':state.controller?.mode==='macos-service'?'macOS service':state.controller?.mode==='developer'?'Developer host':'Not reported');
     $('footer-dot').classList.toggle('connected',connected);$('engine-dot').classList.toggle('connected',connected);
     $('engine-label').replaceChildren(document.createTextNode(connected?'Engine connected':'Engine not connected'),element('small','',connected?'Isolated development engine':'Existing broadcasts unchanged'));
     $('disconnect-engine').disabled=!state.engine;
     $('retry-command').hidden=!pending();$('retry-command').disabled=!connected||state.busy;
-  microphoneUI?.update();libraryControls();renderProgrammeMeter();brandingUI?.update();cueUI?.update();programmeUI?.update();crossfadeUI?.update();
+  setupWizardUI?.update();microphoneUI?.update();libraryControls();renderProgrammeMeter();brandingUI?.update();cueUI?.update();programmeUI?.update();crossfadeUI?.update();
   }
   function libraryControls(){
     const enabled=fresh()&&!state.busy&&!pending();$('choose-folder').disabled=!enabled;$('add-files').disabled=!enabled||!state.library?.canImportFiles;
@@ -229,8 +229,9 @@
     try{const result=await api('/api/engines');const options=result.engines??[];$('engine-select').replaceChildren(...(options.length?options.map(name=>{const option=element('option','',name);option.value=name;return option;}):[element('option','','No engines available')]));$('engine-select').disabled=!options.length;$('connect-engine').disabled=!options.length;text('engine-discovery',options.length?`${options.length} isolated engine${options.length===1?'':'s'} found on this computer.`:result.preview?'Visual preview. No broadcasting engine is connected.':'No isolated engine is running. Review the separate installation below or refresh discovery after service startup.');}
     catch(error){text('engine-discovery','Engine discovery unavailable: '+error.message);}
     finally{state.discovering=false;}
-    if(state.autoConnect&&state.session?.preview===false&&!state.engine&&Array.from($('engine-select').children).some(option=>option.value==='onair-next-dev-service')){
-      state.engine='onair-next-dev-service';$('engine-select').value=state.engine;await poll();
+    const installedEngine=Array.from($('engine-select').children).map(option=>option.value).find(value=>value==='onair-next-dev-service'||value==='onair-next-dev-macos');
+    if(state.autoConnect&&state.session?.preview===false&&!state.engine&&installedEngine){
+      state.engine=installedEngine;$('engine-select').value=state.engine;await poll();
     }
   }
   async function poll(){
@@ -576,6 +577,7 @@
     try{
       const previous=setupState?.receipt?.phase;setupState=await api('/api/setup');const plan=setupState.plan,receipt=setupState.receipt;
       text('setup-phase',receipt?.phase??setupState.phase);text('setup-detail',setupState.systemError??setupState.detail);
+      if(!plan&&!setupInputDirty&&setupState.bundledRuntime)$('setup-runtime').value=setupState.bundledRuntime;
       if(plan&&!setupInputDirty&&!setupState.busy){$('setup-runtime').value=plan.runtimeRoot;$('setup-start').checked=plan.startService;}
       $('setup-review').hidden=!plan;
       const properties=plan?[['Installation',setupState.installRoot],['Separate data',setupState.dataRoot],['Windows service account','LocalService'],['Studio operator',plan.operatorSid],['Audio runtime',plan.runtimeRoot],['Package checksum',plan.bundle],['Initial channels','Eight stopped channels · zero armed outputs']]:[];
@@ -775,6 +777,7 @@
   $('reports-prev').addEventListener('click',()=>{reports.offset=Math.max(0,reports.offset-32);void loadReports();});
   $('reports-next').addEventListener('click',()=>{reports.offset+=32;void loadReports();});
   const reportToday=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Istanbul',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(part=>[part.type,part.value]));$('report-day').value=reportToday.year+'-'+reportToday.month+'-'+reportToday.day;$('report-day').max='9998-12-31';$('report-year').value=reportToday.year;for(const station of roster){const option=element('option','',station.name);option.value=station.id;$('report-station').append(option);}renderReports();
+  setupWizardUI=RadioTeduSetupWizard.create({api,roster,navigate,selectStation,refreshSetup:loadSetup,context:()=>({engine:state.engine,fresh:fresh(),service:['windows-service','macos-service'].includes(state.controller?.mode),supported:state.controller?.capabilities?.includes('commissioning-custom-profile-v1')===true,stations:state.stations})});
   microphoneUI=RadioTeduMicrophone.create({context:()=>({engine:state.engine,station:state.station,name:stationName(),fresh:fresh(),running:current()?.State==='Running',supported:state.controller?.capabilities?.includes('live-microphone-v1')===true,token:state.session?.token})});
   cueUI=RadioTeduCue.create({api,
     context:()=>({engine:state.engine,fresh:fresh(),busy:state.busy,supported:state.controller?.capabilities?.includes('private-cue-v1')===true}),

@@ -32,7 +32,7 @@ async function open({engines=['onair-next-dev-service'],preview=false,sessionDen
  };
  const ui={create:()=>({update(){},show(){}})};
  const context={document,location:{hash:'#access='+'a'.repeat(64),pathname:'/',search:''},history:{replaceState(){}},sessionStorage:storage(),localStorage:storage(),URLSearchParams,AbortSignal,Intl,Date:Clock,console,crypto:require('node:crypto').webcrypto,fetch:api,setInterval:(f,ms)=>{intervals.push({f,ms});return intervals.length},setTimeout,clearTimeout,
-  RadioTeduMeter:require('../../src/OnAirNext.Web/wwwroot/programme-meter.js'),RadioTeduQueue:require('../../src/OnAirNext.Web/wwwroot/queue.js'),RadioTeduMicrophone:ui,RadioTeduCue:ui,RadioTeduProgrammes:ui,RadioTeduBranding:ui,RadioTeduCrossfade:ui};
+  RadioTeduMeter:require('../../src/OnAirNext.Web/wwwroot/programme-meter.js'),RadioTeduQueue:require('../../src/OnAirNext.Web/wwwroot/queue.js'),RadioTeduSetupWizard:ui,RadioTeduMicrophone:ui,RadioTeduCue:ui,RadioTeduProgrammes:ui,RadioTeduBranding:ui,RadioTeduCrossfade:ui};
  vm.runInNewContext(source,context,{filename:'studio.js'});
  const flush=async()=>{for(let i=0;i<5;i++)await new Promise(r=>setImmediate(r));};await flush();
  return{get,requests,flush,setEngines:v=>available=v,setStatusFailure:v=>failedStatus=v,tick:async(n=5)=>{for(let i=0;i<n;i++){now+=1000;for(const timer of intervals.filter(t=>t.ms===1000))timer.f();await flush();}},meterTick:async(n)=>{for(let i=0;i<n;i++){now+=100;for(const timer of intervals.filter(t=>t.ms===100))timer.f();await flush();}}};

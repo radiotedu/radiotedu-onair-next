@@ -76,6 +76,7 @@ app.Use(async (context, next) =>
 app.UseDefaultFiles(); app.UseStaticFiles();
 app.MapGet("/api/microphone", (HttpContext context, string engine, string station) =>
     MicrophoneBridge.RunAsync(context, engine, station, app.Lifetime.ApplicationStopping));
+app.MapPost("/api/setup/start-service", async (SetupCoordinator setup, CancellationToken token) => { await setup.StartStoppedServiceAsync(token); return Results.Json(new { accepted=true }); });
 app.MapPost("/api/console/close", (HttpResponse response) => { response.OnCompleted(() => { app.Lifetime.StopApplication(); return Task.CompletedTask; }); return Results.Json(new { accepted=true }); });
 app.MapGet("/api/health", () => Results.Json(new { product="RadioTEDU-OnAirNext", version=access.Version, processId=Environment.ProcessId }));
 app.MapPost("/api/private-cue",async(PrivateCueOpen request,HttpContext context)=>
@@ -166,7 +167,7 @@ app.MapGet("/api/source-check", async (string engine, string station, string id,
 app.MapPost("/api/command", async (ConsoleCommand command, CancellationToken token) =>
 {
     var outputAction = command.Request.ValueKind == JsonValueKind.Object && command.Request.TryGetProperty("Action", out var outputCommand) &&
-        outputCommand.GetString() is "commission-output-profile-clear" or "commission-output-roster";
+        outputCommand.GetString() is "commission-output-profile" or "commission-output-profile-clear" or "commission-output-roster";
     if (command.Request.ValueKind != JsonValueKind.Object || !command.Request.TryGetProperty("Action", out var action) ||
         (!outputAction && !allowedActions.Contains(action.GetString() ?? "")) || !command.Request.TryGetProperty("Id", out var id) ||
         !Guid.TryParse(id.GetString(), out _)) throw new ArgumentException("This station command is not available.");

@@ -106,7 +106,7 @@ public sealed record StationOutputConfiguration(string StationId, IReadOnlyList<
 // A complete fixed RadioTEDU commissioning roster is committed at once, while every
 // station remains disarmed. The service applies it only after validating its full map.
 [JsonConverter(typeof(JsonStringEnumConverter<ProductionOutputRoster>))]
-public enum ProductionOutputRoster { Expanded18, Existing16 }
+public enum ProductionOutputRoster { Expanded18, Existing16, Custom }
 
 public sealed record ProductionOutputConfiguration(int SchemaVersion, IReadOnlyList<StationOutputConfiguration> Stations,
     ProductionOutputRoster Roster = ProductionOutputRoster.Expanded18)
@@ -149,6 +149,17 @@ public sealed record ProductionOutputConfiguration(int SchemaVersion, IReadOnlyL
             !Stations.Select(x => x.StationId).Order(StringComparer.Ordinal).SequenceEqual(StationIds.Order(StringComparer.Ordinal), StringComparer.Ordinal))
             throw new ArgumentException("Provide an output group for every one of the eight RadioTEDU stations.");
         var outputs = Stations.SelectMany(station => station.Outputs.Select(output => (station.StationId, Output: output))).ToArray();
+        if (Roster == ProductionOutputRoster.Custom)
+        {
+            if (outputs.Length is < 1 or > 24 || outputs.Any(entry => entry.Output is null || !entry.Output.Commissioned))
+                throw new ArgumentException("Choose between one and 24 commissioned outputs.");
+            foreach (var entry in outputs) entry.Output.ValidateCommissioned();
+            if (outputs.Select(x => x.Output.Id).Distinct(StringComparer.Ordinal).Count() != outputs.Length ||
+                outputs.Select(x => (x.Output.Host.ToLowerInvariant(), x.Output.Port, x.Output.Mount.ToLowerInvariant())).Distinct().Count() != outputs.Length)
+                throw new ArgumentException("Each output ID and destination must have exactly one owner.");
+            if (Stations.Any(station => station.Outputs.Count > 3)) throw new ArgumentException("Use at most three codec outputs per station.");
+            return this;
+        }
         var expectedCount = Roster == ProductionOutputRoster.Existing16 ? 16 : 18;
         if (outputs.Length != expectedCount || outputs.Any(entry => entry.Output is null))
             throw new ArgumentException($"The selected production roster requires exactly {expectedCount} codec outputs.");
