@@ -33,14 +33,14 @@ public sealed class SetupPackageTests
     public async Task CompleteBundleRequiresEveryRequiredComponentAndExactFileBytes()
     {
         var root=Root();var files=new List<SetupFile>();
-        foreach(var path in new[]{"bin/OnAirNext.Host.exe","console/OnAirNext.Web.exe","setup/OnAirNext.Setup.exe"})
+        foreach(var path in new[]{"bin/OnAirNext.Host.exe","console/OnAirNext.Web.exe","setup/OnAirNext.Setup.exe","desktop/RadioTEDU OnAir Next.exe"})
         {
             var full=SetupPaths.Resolve(root,path);Directory.CreateDirectory(Path.GetDirectoryName(full)!);await File.WriteAllTextAsync(full,"fixture "+path);
             files.Add(new(path,new FileInfo(full).Length,await SetupPaths.HashAsync(full)));
         }
         var manifest=Path.Combine(root,"bundle.json");await File.WriteAllTextAsync(manifest,JsonSerializer.Serialize(new SetupBundle(new string('a',40),files.ToArray())));
-        var hash=await SetupPaths.HashAsync(manifest);Assert.Equal(3,(await SetupPaths.VerifyBundleAsync(root,hash,CancellationToken.None)).Files.Length);
-        await File.WriteAllTextAsync(SetupPaths.Resolve(root,files[0].Path),"tampered");
+        var hash=await SetupPaths.HashAsync(manifest);Assert.Equal(4,(await SetupPaths.VerifyBundleAsync(root,hash,CancellationToken.None)).Files.Length);
+        await File.WriteAllTextAsync(SetupPaths.Resolve(root,files[^1].Path),"tampered");
         await Assert.ThrowsAsync<IOException>(()=>SetupPaths.VerifyBundleAsync(root,hash,CancellationToken.None));
     }
 }

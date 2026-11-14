@@ -14,6 +14,8 @@ if [[ "$configuration" != "$operator_home/"* || "$configuration" == *'<'* || "$c
 plist=/Library/LaunchDaemons/com.radiotedu.onairnext.engine.plist
 if [[ -e "$plist" ]]; then echo "Service definition already exists; it was preserved." >&2;exit 1;fi
 /bin/mkdir -p /Library/Logs/RadioTEDU
+/usr/sbin/chown "$operator":staff /Library/Logs/RadioTEDU
+/bin/chmod 700 /Library/Logs/RadioTEDU
 /bin/cat > "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

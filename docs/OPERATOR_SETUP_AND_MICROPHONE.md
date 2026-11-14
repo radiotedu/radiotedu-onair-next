@@ -8,7 +8,7 @@ Use the matching installer attached to a release: Windows x64 EXE, Apple Silicon
 
 Windows setup opens its own desktop window. In **System → Get started**, open installation checks. The bundled audio-tools directory is filled in automatically. Review the package, install the service and approve Windows elevation. Existing installations use the separate reviewed application-update workflow; the setup wrapper never silently stops an existing broadcaster.
 
-On macOS, install from the signed-in studio operator account. The PKG places the app in Applications, initializes private operator data and registers a launchd daemon running as that operator. An existing application or service is preserved and causes this fresh-install package to stop. The daemon starts independently of the desktop window, uses automatic recovery and remembers station running intent. Availability before login still depends on storage/FileVault and machine configuration.
+macOS 14 or newer is required, matching the bundled [.NET 10 platform support](https://learn.microsoft.com/en-us/dotnet/core/install/macos). On macOS, install from the signed-in studio operator account. The PKG places the app in Applications, initializes private operator data and registers a launchd daemon running as that operator. An existing application or service is preserved and causes this fresh-install package to stop. The daemon starts independently of the desktop window, uses automatic recovery and remembers station running intent. Availability before login still depends on storage/FileVault and machine configuration.
 
 Both platforms begin with eight stopped channels and no armed outputs. Opening a window does not start broadcasting.
 

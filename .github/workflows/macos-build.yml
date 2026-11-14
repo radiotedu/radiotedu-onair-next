@@ -65,6 +65,14 @@ jobs:
         run: |
           sudo installer -pkg "artifacts/installers/RadioTEDU-OnAir-Next-${{ matrix.rid }}-Setup.pkg" -target /
           desktop-shell/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron desktop-shell/test/operator-e2e.cjs
+      - name: Retain installed daemon diagnostics
+        if: always()
+        run: |
+          mkdir -p artifacts/mac-service
+          sudo launchctl print system/com.radiotedu.onairnext.engine > artifacts/mac-service/launchd.txt 2>&1 || true
+          sudo tail -n 120 /Library/Logs/RadioTEDU/engine.log > artifacts/mac-service/engine.log 2>&1 || true
+          sudo tail -n 120 /Library/Logs/RadioTEDU/engine-error.log > artifacts/mac-service/engine-error.log 2>&1 || true
+          find /tmp -maxdepth 1 -name 'CoreFxPipe_onair-next*' -ls > artifacts/mac-service/pipes.txt 2>&1 || true
       - name: Retain native macOS setup
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -84,4 +92,6 @@ jobs:
           path: |
             artifacts/macos-tests
             artifacts/operator-ui
+            artifacts/mac-service
+            ~/Library/Application Support/RadioTEDU/OnAirNext-Dev/runs/*/results.json
           if-no-files-found: warn

@@ -18,7 +18,7 @@ permissions:
   contents: read
 concurrency:
   group: windows-build-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   public-continuity:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.public_continuity_only }}
