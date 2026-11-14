@@ -49,7 +49,6 @@
  <div class="nav-label operations-label">OPERATIONS</div>
  <nav aria-label="Operations navigation">
   <button data-page="system" class="nav-item" title="System"><svg><use href="#i-settings"/></svg>System</button>
-  <button data-page="recovery" class="nav-item" disabled title="Recovery controls are still being implemented"><svg><use href="#i-recovery"/></svg>Recovery</button>
  </nav>
  <div class="sidebar-bottom"><div class="engine-status"><span class="dot" id="engine-dot"></span><div id="engine-label">Engine not connected<small>Existing broadcasts unchanged</small></div></div><button class="operator" data-page="system" aria-label="Studio settings"><span class="avatar">RT</span><span>Studio operator<small>This computer</small></span><svg><use href="#i-settings"/></svg></button></div>
 </aside>
@@ -58,13 +57,13 @@
  <div class="station-strip"><span class="strip-label">CHANNELS</span><div id="stations" role="tablist" aria-label="Channels"></div></div>
  <main>
   <section data-view="air">
-   <div class="page-heading"><div><div class="eyebrow">BROADCAST DESK</div><h1><span data-station-name>Energize</span><span class="state-pill" id="station-state">Not connected</span></h1><p class="page-description" id="air-description">Connect the engine to load the current programme.</p></div><div class="toolbar"><button class="button inspector-toggle" id="toggle-inspector" aria-expanded="false" aria-controls="channel-inspector">Channel details</button><button class="button" data-page="library"><svg><use href="#i-library"/></svg>Open library</button></div></div>
+   <div class="page-heading"><div><div class="eyebrow">BROADCAST DESK</div><h1><span data-station-name>Energize</span><span class="state-pill" id="station-state">Not connected</span></h1><p class="page-description" id="air-description">Connect the engine to load the current programme.</p></div><div class="toolbar"><button class="button" id="open-microphone" aria-controls="channel-inspector">Microphone</button><button class="button inspector-toggle" id="toggle-inspector" aria-expanded="false" aria-controls="channel-inspector">Channel details</button><button class="button" data-page="library"><svg><use href="#i-library"/></svg>Open library</button></div></div>
    <div class="desk-grid">
     <div class="desk-main">
      <section class="panel now-panel" aria-labelledby="now-heading"><div class="panel-heading"><h2 id="now-heading"><span class="signal-mark"></span>NOW PLAYING</h2><span class="quiet" id="content-kind">PROGRAMME</span></div>
       <div class="now-content"><div class="record-placeholder"><svg><use href="#i-music"/></svg></div><div class="track-copy"><div class="quiet" id="now-artist">No programme loaded</div><h2 id="now-title">Nothing on air</h2><span class="quiet" id="now-detail">Playback status is unavailable until the engine connects.</span></div></div>
       <div class="playback-timeline"><div class="track-progress" role="progressbar" aria-label="Item progress" aria-valuenow="0"><span id="progress-fill"></span></div><div class="time-labels"><span id="elapsed">--:--</span><span id="duration-label">Duration unavailable</span><span id="remaining">--:--</span></div></div>
-      <div class="transport"><div class="transport-left"><button class="button primary" id="start-station" disabled><svg><use href="#i-play"/></svg>Start station</button><button class="button stop-outline" id="stop-station" disabled><svg><use href="#i-stop"/></svg>Stop</button><button class="button" id="skip-item" disabled><svg><use href="#i-skip"/></svg>Next item</button><button class="icon-button" aria-label="Private audition" disabled title="Private audition is not implemented yet"><svg><use href="#i-headphones"/></svg></button></div><span class="transport-note" id="transport-note">Controls unavailable</span></div>
+      <div class="transport"><div class="transport-left"><button class="button primary" id="start-station" disabled><svg><use href="#i-play"/></svg>Start station</button><button class="button stop-outline" id="stop-station" disabled><svg><use href="#i-stop"/></svg>Stop</button><button class="button" id="skip-item" disabled><svg><use href="#i-skip"/></svg>Next item</button><button class="icon-button" aria-label="Private audition" disabled title="Connect an engine with private cue support"><svg><use href="#i-headphones"/></svg></button></div><span class="transport-note" id="transport-note">Controls unavailable</span></div>
      </section>
      <section class="panel" aria-labelledby="crossfade-heading"><div class="panel-heading"><h2 id="crossfade-heading">MUSIC TRANSITIONS</h2><span class="quiet" id="crossfade-version">Not loaded</span></div>
       <form id="crossfade-form"><label for="crossfade-seconds">Crossfade duration (seconds)</label> <input id="crossfade-seconds" type="number" min="0" max="15" step="0.5" value="0" required disabled> <button class="button" id="crossfade-save" type="submit" disabled>Save transition</button> <button class="button" id="crossfade-retry" type="button" hidden>Retry saved request</button></form>
@@ -93,7 +92,7 @@
 <div class="toolbar"><button id="mic-live" class="button primary" disabled>Go live</button><button id="mic-end" class="button" disabled>End live</button><button id="mic-close" class="text-button" disabled>Release device</button></div>
 <p id="mic-feedback" role="status">Microphone stays off until you test and explicitly go live. Closing this page returns to automation.</p>
 </div></section>
-<dialog id="mic-confirm"><form method="dialog"><h2>Open microphone on air?</h2><p id="mic-confirm-text"></p><div class="toolbar"><button class="button" value="cancel">Cancel</button><button class="button primary" value="live">Go live</button></div></form></dialog>
+<dialog id="mic-confirm" aria-labelledby="mic-confirm-heading"><form method="dialog"><div class="dialog-heading"><h2 id="mic-confirm-heading">Open microphone on air?</h2></div><p class="dialog-body" id="mic-confirm-text"></p><div class="dialog-footer"><button class="button" value="cancel">Cancel</button><button class="button primary" value="live">Go live</button></div></form></dialog>
     </aside>
    </div>
   </section>

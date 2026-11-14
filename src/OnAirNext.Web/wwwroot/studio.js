@@ -261,6 +261,7 @@
   $('start-station').addEventListener('click',()=>void command('start-station'));
   $('stop-station').addEventListener('click',()=>{state.stopTarget={station:state.station,engine:state.engine};text('stop-heading','Stop '+stationName()+'?');text('stop-name',stationName());$('stop-dialog').returnValue='cancel';$('stop-dialog').showModal();});
   $('stop-dialog').addEventListener('close',()=>{const target=state.stopTarget;state.stopTarget=null;if($('stop-dialog').returnValue!=='stop')return;if(!target||target.station!==state.station||target.engine!==state.engine){message('Channel changed. Stop was cancelled.');return;}void command('stop-station');});
+  $('open-microphone').addEventListener('click',()=>{$('toggle-inspector').setAttribute('aria-expanded','true');$('channel-inspector').classList.add('expanded');document.querySelector('.microphone-panel').scrollIntoView({block:'center'});$('mic-prepare').focus({preventScroll:true});});
   $('toggle-inspector').addEventListener('click',()=>{const expanded=$('toggle-inspector').getAttribute('aria-expanded')!=='true';$('toggle-inspector').setAttribute('aria-expanded',String(expanded));$('channel-inspector').classList.toggle('expanded',expanded);});
   $('skip-item').addEventListener('click',()=>void command('skip'));
   function assetContext(target){return !!target&&target.engine===state.engine&&target.station===state.station&&target.revision===state.library?.page?.Root?.Revision;}
