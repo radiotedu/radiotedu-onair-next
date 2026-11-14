@@ -248,6 +248,22 @@ jobs:
           name: windows-setup-qualification
           path: artifacts/setup-smoke/summary.json
           if-no-files-found: warn
+      - name: Build native desktop and Windows setup executable
+        run: ./scripts/Package-WindowsInstaller.ps1
+      - name: Retain operator UI screenshots and evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-operator-ui
+          path: artifacts/operator-ui
+          if-no-files-found: warn
+      - name: Retain Windows installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: onair-next-windows-setup
+          path: artifacts/installers
+          retention-days: 14
+          if-no-files-found: error
       - name: Retain compiled development binaries
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

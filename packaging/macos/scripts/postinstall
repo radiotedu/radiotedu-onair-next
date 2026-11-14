@@ -1,0 +1,37 @@
+#!/bin/bash
+set -euo pipefail
+umask 077
+operator=$(/usr/bin/stat -f %Su /dev/console)
+if [[ ! "$operator" =~ ^[a-zA-Z0-9_.-]+$ ]] || [[ "$operator" == root || "$operator" == loginwindow ]]; then
+  echo "Install from the signed-in studio operator account." >&2; exit 1
+fi
+operator_home=$(/usr/bin/dscl . -read "/Users/$operator" NFSHomeDirectory | /usr/bin/sed 's/^NFSHomeDirectory: //')
+if [[ ! "$operator_home" =~ ^/Users/[a-zA-Z0-9._\ -]+$ ]]; then echo "Unsupported operator home path." >&2;exit 1;fi
+host="/Applications/RadioTEDU OnAir Next.app/Contents/Resources/engine/OnAirNext.Host"
+/usr/bin/sudo -u "$operator" /usr/bin/env HOME="$operator_home" TMPDIR=/tmp "$host" --macos-initialize
+configuration=$(/usr/bin/sudo -u "$operator" /usr/bin/env HOME="$operator_home" TMPDIR=/tmp "$host" --macos-paths | /usr/bin/plutil -extract config raw -o - -)
+if [[ "$configuration" != "$operator_home/"* || "$configuration" == *'<'* || "$configuration" == *'&'* ]]; then echo "Invalid service data path." >&2;exit 1;fi
+plist=/Library/LaunchDaemons/com.radiotedu.onairnext.engine.plist
+if [[ -e "$plist" ]]; then echo "Service definition already exists; it was preserved." >&2;exit 1;fi
+/bin/mkdir -p /Library/Logs/RadioTEDU
+/bin/cat > "$plist" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>com.radiotedu.onairnext.engine</string>
+<key>UserName</key><string>$operator</string>
+<key>ProgramArguments</key><array><string>$host</string><string>--macos-service</string><string>--config</string><string>$configuration</string></array>
+<key>EnvironmentVariables</key><dict><key>HOME</key><string>$operator_home</string><key>TMPDIR</key><string>/tmp</string></dict>
+<key>RunAtLoad</key><true/><key>KeepAlive</key><true/><key>ThrottleInterval</key><integer>5</integer><key>Umask</key><integer>63</integer>
+<key>StandardOutPath</key><string>/Library/Logs/RadioTEDU/engine.log</string><key>StandardErrorPath</key><string>/Library/Logs/RadioTEDU/engine-error.log</string>
+</dict></plist>
+EOF
+/usr/sbin/chown root:wheel "$plist"
+/bin/chmod 600 "$plist"
+/bin/launchctl bootstrap system "$plist"
+# An application alias is optional; never replace an existing Desktop item.
+if [[ ! -e "$operator_home/Desktop/RadioTEDU OnAir Next.app" ]]; then
+ /usr/bin/sudo -u "$operator" /bin/ln -s "/Applications/RadioTEDU OnAir Next.app" "$operator_home/Desktop/RadioTEDU OnAir Next.app"
+fi
+uid=$(/usr/bin/id -u "$operator")
+/bin/launchctl asuser "$uid" /usr/bin/sudo -u "$operator" /usr/bin/open "/Applications/RadioTEDU OnAir Next.app" || true

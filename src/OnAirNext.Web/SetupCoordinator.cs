@@ -52,6 +52,7 @@ internal sealed class SetupCoordinator : IAsyncDisposable
     }
     public object Status()
     {
+        if(OperatingSystem.IsMacOS())return new {supported=false,platform="macos",packageAvailable=false,busy=false,phase="Installed",detail="The macOS package installs the launchd engine. Saved output changes restart that engine automatically; all channels stay stopped until you start them.",installRoot="/Applications/RadioTEDU OnAir Next.app",dataRoot=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"RadioTEDU","OnAirNext-Dev","mac-service")};
         SetupReceipt? receipt=null;SetupServiceState? service=null;string? systemError=null;
         if(OperatingSystem.IsWindows())
         {

@@ -46,6 +46,23 @@ jobs:
       - name: Build pinned shared audio runtime
         if: steps.codecs.outputs.cache-hit != 'true'
         run: python3 scripts/codec/build-macos-codecs.py
+      - name: Qualify continuous audio, microphone fallback and reconnect on private Icecast
+        run: |
+          for scenario in baseline live recovery; do
+            dotnet artifacts/build/bin/OnAirNext.Lab/release/OnAirNext.Lab.dll --ffmpeg "$PWD/artifacts/macos-codec-runtime/bin/ffmpeg" --dotnet "$(command -v dotnet)" --icecast-root "$(brew --prefix icecast)" --scenario "$scenario" --duration-seconds 12
+          done
+      - name: Build complete native application and macOS setup
+        run: python3 scripts/Package-MacOS.py ${{ matrix.rid }}
+      - name: Install on disposable Mac and verify real operator UI
+        run: |
+          sudo installer -pkg "artifacts/installers/RadioTEDU-OnAir-Next-${{ matrix.rid }}-Setup.pkg" -target /
+          desktop-shell/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron desktop-shell/test/operator-e2e.cjs
+      - name: Retain native macOS setup
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: onair-next-setup-${{ matrix.rid }}
+          path: artifacts/installers/RadioTEDU-OnAir-Next-*-Setup.pkg
+          if-no-files-found: error
       - name: Retain native runtime and sources
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -56,5 +73,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: macos-evidence-${{ matrix.rid }}
-          path: artifacts/macos-tests
+          path: |
+            artifacts/macos-tests
+            artifacts/operator-ui
           if-no-files-found: warn

@@ -17,6 +17,7 @@ internal sealed class Sandbox : IAsyncDisposable
     public Sandbox(string icecastRoot, string root, bool utf8Metadata = false)
     {
         _icecastRoot = icecastRoot; Root = root;
+        var share = OperatingSystem.IsWindows() ? icecastRoot : Path.Combine(icecastRoot,"share","icecast");
         Directory.CreateDirectory(root); Directory.CreateDirectory(Path.Combine(root, "origin-logs"));
         var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
         Port = ((IPEndPoint)listener.LocalEndpoint).Port; listener.Stop();
@@ -32,8 +33,8 @@ internal sealed class Sandbox : IAsyncDisposable
             new XElement("listen-socket", new XElement("port", Port), new XElement("bind-address", "127.0.0.1")),
             new XElement("fileserve", 1),
             new XElement("paths", new XElement("basedir", icecastRoot), new XElement("logdir", Path.Combine(root, "origin-logs")),
-                new XElement("webroot", Path.Combine(icecastRoot, "web")), new XElement("adminroot", Path.Combine(icecastRoot, "admin")),
-                new XElement("mime-types", Path.Combine(icecastRoot, "mime.types"))),
+                new XElement("webroot", Path.Combine(share, "web")), new XElement("adminroot", Path.Combine(share, "admin")),
+                new XElement("mime-types", Path.Combine(share, "mime.types"))),
             new XElement("logging", new XElement("accesslog", "access.log"), new XElement("errorlog", "error.log"), new XElement("loglevel", 2))));
         // Icecast otherwise converts ICY titles to ISO-8859-1 and cannot represent
         // the Japanese/Turkish qualification signal. This configures the owned
@@ -46,7 +47,7 @@ internal sealed class Sandbox : IAsyncDisposable
     public async Task StartAsync()
     {
         if (_server is not null) throw new InvalidOperationException("Test origin already owned.");
-        _server = ChildProcess.Start(Path.Combine(_icecastRoot, "bin", "icecast.exe"), ["-c", _configuration], output: true, role: "test-origin");
+        _server = ChildProcess.Start(Path.Combine(_icecastRoot, "bin", OperatingSystem.IsWindows() ? "icecast.exe" : "icecast"), ["-c", _configuration], output: true, role: "test-origin");
         _ = _server.StandardOutput.ReadToEndAsync();
         var errors = ChildProcess.DrainErrorAsync(_server);
         using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };

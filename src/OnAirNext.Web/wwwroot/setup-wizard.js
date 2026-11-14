@@ -4,7 +4,8 @@
     const $=id=>document.getElementById(id);let busy=false,reviewed=null;const rows=new Map();
     const say=value=>$('wizard-feedback').textContent=value;
     function stopped(){const c=context();return c.fresh&&c.service&&c.supported&&c.stations.length===8&&c.stations.every(s=>s.State==='Stopped'&&!s.RequestedRunning&&s.Outputs.every(o=>o.State==='Stopped'&&!o.EncoderPid&&!o.QueuedBlocks));}
-    function update(){ $('wizard-review').disabled=busy||!stopped();$('wizard-save').disabled=busy||!stopped()||!reviewed;$('wizard-start-service').disabled=busy;
+    function update(){ $('wizard-review').disabled=busy||!stopped();$('wizard-save').disabled=busy||!stopped()||!reviewed;$('wizard-start-service').disabled=busy||context().mode==='macos-service';
+      if(context().mode==='macos-service')$('wizard-start-service').textContent='macOS engine restarts automatically';
       $('wizard-gate').textContent=stopped()?'Ready to review new stream destinations. No station will start automatically.':'Output configuration requires the installed engine and all channels stopped. Folder and sweeper screens remain available.'; }
     const mounts={'1':'/classic','2':'/lofi','4':'/radio','5':'/cazz','8':'/rock','9':'/energize','10':'/situation','11':'/maincharacter'};
     for(const station of roster){
