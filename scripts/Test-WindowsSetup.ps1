@@ -10,11 +10,11 @@ $summary=Join-Path $PSScriptRoot '../artifacts/setup-smoke/summary.json'
 $checks=[Collections.Generic.List[string]]::new();$completed=$false;$failure=$null;$owned=$false;$plan=$null;$webProcess=$null;$shortcutPaths=@();$maintenance=$null;$review=$null;$updateFailures=@();$updateIntent=$null
 $audioToolsReview=$null;$audioToolsReceipt=$null
 function Check([string]$name,[bool]$value){if(-not $value){throw ('Setup check failed: '+$name)};$checks.Add($name)}
-function Run([string]$exe,[string[]]$arguments){
+function Run([string]$exe,[string[]]$arguments,[int]$timeoutSeconds=240){
  $start=[Diagnostics.ProcessStartInfo]::new($exe);$start.UseShellExecute=$false;$start.CreateNoWindow=$true;$start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
  foreach($argument in $arguments){$start.ArgumentList.Add($argument)}
  $process=[Diagnostics.Process]::Start($start);$out=$process.StandardOutput.ReadToEndAsync();$err=$process.StandardError.ReadToEndAsync()
- try{if(-not $process.WaitForExit(240000)){$process.Kill($true);$process.WaitForExit(10000)|Out-Null;throw 'Owned setup fixture process exceeded its deadline'};if($process.ExitCode -ne 0){$stdout=$out.GetAwaiter().GetResult();$stderr=$err.GetAwaiter().GetResult();throw ('Setup process failed ('+$process.ExitCode+', '+$arguments[0]+'): '+$stdout.Substring(0,[Math]::Min(2048,$stdout.Length))+' '+$stderr.Substring(0,[Math]::Min(2048,$stderr.Length)))};return $out.GetAwaiter().GetResult()}finally{$process.Dispose()}
+ try{if(-not $process.WaitForExit($timeoutSeconds*1000)){$process.Kill($true);$process.WaitForExit(10000)|Out-Null;throw ('Owned setup fixture process exceeded its '+$timeoutSeconds+' second deadline: '+$arguments[0])};if($process.ExitCode -ne 0){$stdout=$out.GetAwaiter().GetResult();$stderr=$err.GetAwaiter().GetResult();throw ('Setup process failed ('+$process.ExitCode+', '+$arguments[0]+'): '+$stdout.Substring(0,[Math]::Min(2048,$stdout.Length))+' '+$stderr.Substring(0,[Math]::Min(2048,$stderr.Length)))};return $out.GetAwaiter().GetResult()}finally{$process.Dispose()}
 }
 function Open-ExternalFixtureConsole {
  if($script:webProcess){if(-not $script:webProcess.HasExited){throw 'Close the owned fixture console before reopening it'};$script:webProcess.Dispose()}
@@ -237,12 +237,14 @@ try{
  Check 'Read-only review retains original operator configuration and exact service process' ($review.OperatorSid -eq $plan.OperatorSid -and $review.ConfigurationSha256 -eq $before -and $review.ServiceProcessId -eq $service.ProcessId -and (Get-FileHash -LiteralPath (Join-Path $data 'host.json') -Algorithm SHA256).Hash -eq $before)
  $reviewPath=Join-Path $fixture 'update-review.json';$review|ConvertTo-Json -Depth 24|Set-Content -LiteralPath $reviewPath -Encoding utf8NoBOM
  $reviewHash=(Get-FileHash -LiteralPath $reviewPath -Algorithm SHA256).Hash
- $null=Run $setup @('--apply-update',$reviewPath,$reviewHash)
+ $updateDeadline=[Math]::Min(1200,[Math]::Max(240,[Math]::Ceiling(($files|Measure-Object -Property Bytes -Sum).Sum/(2*1024*1024))+180))
+ $null=Run $setup @('--apply-update',$reviewPath,$reviewHash) ([int]$updateDeadline)
  $operationFolder=Join-Path $data ('updates/'+$review.Files.Id)
  $completion=Get-Content -LiteralPath (Join-Path $operationFolder 'apply.completed.json') -Raw|ConvertFrom-Json
  $snapshot=Get-Content -LiteralPath (Join-Path $operationFolder 'snapshot.json') -Raw|ConvertFrom-Json
  Check 'Completed snapshot names a retained operation-local attempt' ($snapshot.Folder -match '^snapshot-[a-f0-9]{32}$')
  Check 'Reviewed update retains the original image and a verified metadata snapshot' ((Test-Path -LiteralPath ($install+'.previous-'+$review.Files.Id)) -and (Test-Path -LiteralPath (Join-Path $operationFolder ($snapshot.Folder+'/data/journal/playback.db'))) -and $completion.ImageSha256 -eq $review.Files.Replacement.BundleSha256)
+ if($bundleFolders -contains 'desktop'){$desktopIds=@(foreach($root in @($install,($install+'.previous-'+$review.Files.Id))){$idText=& "$env:SystemRoot/System32/fsutil.exe" file queryfileid (Join-Path $root 'desktop/RadioTEDU OnAir Next.exe');if($LASTEXITCODE -ne 0){throw 'Desktop file identity query failed'};[regex]::Match(($idText -join ' '),'0x[0-9a-fA-F]+').Value});Check 'Unchanged desktop payload is reused without rewriting the retained image' ($desktopIds.Count -eq 2 -and $desktopIds[0] -ne '' -and $desktopIds[0] -eq $desktopIds[1])}
  $updatedService=Get-CimInstance Win32_Service -Filter ("Name='"+$serviceName+"'")
  $null=Run $setup @('--apply-update',$reviewPath,$reviewHash)
  Check 'Completed update retry does not restart the verified service' ((Get-CimInstance Win32_Service -Filter ("Name='"+$serviceName+"'")).ProcessId -eq $updatedService.ProcessId)

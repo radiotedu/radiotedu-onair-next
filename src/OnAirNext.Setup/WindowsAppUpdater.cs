@@ -143,6 +143,11 @@ internal static class WindowsAppUpdater
         var bytes=bundle.Files.Sum(f=>f.Bytes)+review.Files.Replacement.RuntimeFiles.Sum(f=>f.Bytes);
         if(new DriveInfo(Path.GetPathRoot(swap.InstallRoot)!).AvailableFreeSpace<bytes+2L*1024*1024*1024)throw new IOException("Application maintenance needs the candidate size plus 2 GiB free.");
         WindowsInstaller.CreateProtected(swap.CandidateRoot,account,false);var copied=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+        // Verified application files are immutable. Reuse unchanged payloads on
+        // the same volume instead of rewriting Electron and shared runtimes.
+        // CopyAsync checks protection and falls back to a bounded copy if linking fails.
+        foreach(var file in originalBundle.Files)
+            copied.TryAdd(file.Sha256+":"+file.Bytes,SetupPaths.Resolve(swap.InstallRoot,file.Path));
         foreach(var file in bundle.Files)await WindowsInstaller.CopyAsync(SetupPaths.Resolve(package,file.Path),SetupPaths.Resolve(swap.CandidateRoot,file.Path),file,account,false,copied,2*1024*1024);
         foreach(var file in review.Files.Replacement.RuntimeFiles)
         {
