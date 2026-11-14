@@ -9,7 +9,7 @@ public sealed record MaintenanceJournalInspection(int SchemaVersion,DesiredStati
 // No EventJournal is opened, no WAL/checkpoint/schema or requested state is rewritten.
 public static class JournalMaintenanceInspection
 {
-    public static MaintenanceJournalInspection Read(string database,IReadOnlyCollection<string> expectedStations)
+    public static MaintenanceJournalInspection Read(string database,IReadOnlyCollection<string> expectedStations,IReadOnlyCollection<string>? readerFeatures=null)
     {
         if(!File.Exists(database)||new FileInfo(database).Length is <1 or >536870912)
             throw new InvalidDataException("The maintenance journal is missing or exceeds its inspection bound.");
@@ -41,8 +41,8 @@ public static class JournalMaintenanceInspection
             throw new InvalidOperationException("Application maintenance cannot pass unfinished station queues to an older reader. Complete or resolve queued items first. Current data was not changed.");
         if(EventJournal.HasActiveProgrammePublications(connection,null))
             throw new InvalidOperationException("Unpublish scheduled programmes in the compatible console before application maintenance. Current data was not changed.");
-        if(EventJournal.HasCrossfadeRecoveryState(connection,null))
-            throw new InvalidOperationException("Disable music transitions and resolve any active overlap in the compatible console before application maintenance. Current data was not changed.");
+        if(EventJournal.HasCrossfadeRecoveryState(connection,null,readerFeatures?.Contains(RecoveryCompatibility.CrossfadeFeature,StringComparer.Ordinal)==true))
+            throw new InvalidOperationException("Resolve any active overlap, or disable music transitions when using an older maintenance reader. Current data was not changed.");
         using var checkpoints=connection.CreateCommand();checkpoints.CommandText="SELECT payload FROM playout_checkpoints";
         using(var reader=checkpoints.ExecuteReader())
             while(reader.Read())

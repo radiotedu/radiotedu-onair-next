@@ -18,7 +18,7 @@ internal static class MaintenanceJournalProbe
         if(!string.Equals(database,current,StringComparison.OrdinalIgnoreCase)&&!snapshot)
             throw new InvalidOperationException("Inspect only the retained new playback journal or its reviewed maintenance snapshot.");
         ServiceEndpoint.RequirePath(database,database);
-        var result=JournalMaintenanceInspection.Read(database,["1","2","4","5","8","9","10","11"]);
+        var result=JournalMaintenanceInspection.Read(database,["1","2","4","5","8","9","10","11"],[RecoveryCompatibility.CrossfadeFeature]);
         Console.WriteLine(JsonSerializer.Serialize(result));return 0;
     }
 }

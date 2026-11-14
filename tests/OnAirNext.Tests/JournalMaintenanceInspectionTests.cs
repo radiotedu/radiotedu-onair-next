@@ -51,6 +51,20 @@ public sealed class JournalMaintenanceInspectionTests
         Assert.Equal("ok",JournalMaintenanceInspection.Read(path,Ids).Integrity);
     }
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DeclaredCrossfadeReaderRetainsSettingsButStillRejectsUnfinishedOverlap(bool unfinished)
+    {
+        var path=await CreateAsync();
+        await using(var journal=new EventJournal(path))await journal.InitializeCrossfadeAsync("9",3);
+        if(unfinished)using(var connection=Open(path))Execute(connection,"INSERT INTO playout_overlaps VALUES('9','outgoing','incoming')");
+        var before=await File.ReadAllBytesAsync(path);
+        Assert.Throws<InvalidOperationException>(()=>JournalMaintenanceInspection.Read(path,Ids));
+        if(unfinished)Assert.Throws<InvalidOperationException>(()=>JournalMaintenanceInspection.Read(path,Ids,[RecoveryCompatibility.CrossfadeFeature]));
+        else Assert.Equal("ok",JournalMaintenanceInspection.Read(path,Ids,[RecoveryCompatibility.CrossfadeFeature]).Integrity);
+        Assert.Equal(before,await File.ReadAllBytesAsync(path));
+    }
+    [Theory]
     [InlineData("UPDATE schema_info SET version=2")]
     [InlineData("DELETE FROM station_desired_state WHERE station_id='1'")]
     [InlineData("UPDATE station_desired_state SET station_id='external' WHERE station_id='1'")]
