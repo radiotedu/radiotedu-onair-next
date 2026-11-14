@@ -1,6 +1,9 @@
 'use strict';
 if(process.env.GITHUB_ACTIONS!=='true')throw Error('Disposable CI only.');
 const {app,BrowserWindow,session}=require('electron');const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),crypto=require('node:crypto');
+// CI's file-backed fake microphone needs audio-service file access. The renderer
+// remains sandboxed; the shipped desktop never sets this test-only switch.
+app.commandLine.appendSwitch('disable-features','AudioServiceSandbox');
 app.commandLine.appendSwitch('use-fake-device-for-media-stream');app.commandLine.appendSwitch('use-fake-ui-for-media-stream');app.commandLine.appendSwitch('disable-gpu');
 const root=path.resolve(__dirname,'../..'),out=path.join(root,'artifacts/operator-ui');fs.mkdirSync(out,{recursive:true});
 // A deterministic microphone signal verifies capture and the meter, not only socket state.
@@ -9,7 +12,7 @@ wav.write('RIFF');wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);wav.
 for(let i=0;i<frames;i++){const sample=Math.round(5000*Math.sin(2*Math.PI*1000*i/48000));wav.writeInt16LE(sample,44+i*4);wav.writeInt16LE(sample,46+i*4);}fs.writeFileSync(microphoneFile,wav);app.commandLine.appendSwitch('use-file-for-fake-audio-capture',microphoneFile);
 let host=null,web=null,window=null;const failures=[];const log=fs.openSync(path.join(out,'process.log'),'a');
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-async function until(check,label,seconds=40){const end=Date.now()+seconds*1000;while(Date.now()<end){if(await check())return;await pause(150);}throw Error('Timed out: '+label);}
+async function until(check,label,seconds=40){const end=Date.now()+seconds*1000;while(Date.now()<end){if(host?.exitCode!=null)throw Error('Isolated fixture host exited with '+host.exitCode+'; see process.log');if(await check())return;await pause(150);}throw Error('Timed out: '+label);}
 const js=code=>window.webContents.executeJavaScript(code,true);
 const evaluate=fn=>js('('+fn.toString()+')()');
 const text=id=>js('document.getElementById('+JSON.stringify(id)+')?.textContent ?? ""');
@@ -23,7 +26,7 @@ app.whenReady().then(async()=>{
   if(installed){const resources='/Applications/RadioTEDU OnAir Next.app/Contents/Resources';const paths=JSON.parse(cp.execFileSync(path.join(resources,'engine/OnAirNext.Host'),['--macos-paths'],{encoding:'utf8'}));descriptor=paths.descriptor;engine='onair-next-dev-macos';try{const health=await fetch('http://127.0.0.1:18121/api/health');if(!health.ok)throw Error('Console not ready');}catch{web=spawn(path.join(resources,'console/OnAirNext.Web'),[]);}}
   else {
    const data=path.join(process.env.LOCALAPPDATA,'RadioTEDU','OnAirNext-Dev','operator-e2e',crypto.randomUUID());fs.mkdirSync(data,{recursive:true});engine='onair-next-dev-e2e-'+crypto.randomUUID().replaceAll('-','');
-   const config=path.join(data,'host.json');fs.writeFileSync(config,JSON.stringify({Ffmpeg:path.join(root,'artifacts/windows-codec-runtime/bin/ffmpeg.exe'),DataRoot:data,PipeName:engine,Stations:['1','2','4','5','8','9','10','11'].map(Id=>({Id,Playlist:[],Outputs:Id==='4'?[{Id:'ui-loopback',Host:'127.0.0.1',Port:9,Mount:'/next-ui-fixture',SourcePassword:'synthetic-ci-only'}]:[],AutoStart:false}))}));
+   const config=path.join(data,'host.json');fs.writeFileSync(config,JSON.stringify({Ffmpeg:path.join(root,'artifacts/windows-codec-runtime/bin/ffmpeg.exe'),DataRoot:data,PipeName:engine,Stations:['1','2','4','5','8','9','10','11'].map(Id=>({Id,Playlist:[],Outputs:Id==='4'?[{Id:'ui-loopback',Host:'127.0.0.1',Port:18001,Mount:'/next-ui-fixture',SourcePassword:'synthetic-ci-only'}]:[],AutoStart:false}))}));
    host=spawn(path.join(root,'artifacts/windows-package/bin/OnAirNext.Host.exe'),['--config',config]);web=spawn(path.join(root,'artifacts/windows-package/console/OnAirNext.Web.exe'),[]);descriptor=path.join(process.env.LOCALAPPDATA,'RadioTEDU','OnAirNext-Dev','browser-console/access/console.json');
   }
   let endpoint;
