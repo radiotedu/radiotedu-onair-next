@@ -39,7 +39,7 @@ internal sealed class MicrophonePipeServer : IAsyncDisposable
                 request.Validate();
                 try { input = _microphone(request.StationId); }
                 catch (Exception error) when (error is ArgumentException or InvalidOperationException)
-                { await ReplyAsync(new(false, error.Message), deadline.Token); await _pipe.ReadAsync(new byte[1], deadline.Token); continue; }
+                { await ReplyAsync(new(false, error.Message), deadline.Token); if (await _pipe.ReadAsync(new byte[1], deadline.Token) != 0) throw new IOException("Unexpected microphone data."); continue; }
                 input.SetEnabled(true);
                 await ReplyAsync(new(true), deadline.Token);
                 var buffer = new byte[MicrophoneRequest.BlockBytes];
@@ -48,7 +48,7 @@ internal sealed class MicrophonePipeServer : IAsyncDisposable
                     deadline.CancelAfter(MicrophoneRequest.IdleMilliseconds);
                     await _pipe.ReadExactlyAsync(buffer, deadline.Token);
                     // A replaced or stopped station must require another explicit Go live.
-                    if (!ReferenceEquals(input, _coordinator.Microphone(request.StationId))) break;
+                    if (!ReferenceEquals(input, _microphone(request.StationId))) break;
                     var block = PcmBlock.Rent(); buffer.CopyTo(block.Memory.Span); input.Push(block);
                     await _pipe.WriteAsync(new byte[] { 6 }, deadline.Token);
                 }

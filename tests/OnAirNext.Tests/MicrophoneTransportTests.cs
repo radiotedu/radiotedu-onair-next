@@ -25,7 +25,7 @@ public sealed class MicrophoneTransportTests
         await client.WriteAsync(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(request) + "\n"), deadline.Token);
         var line = await PipeFrames.ReadAsync(client, 4096, deadline.Token);
         Assert.True(JsonSerializer.Deserialize<MicrophoneReply>(line!)!.Accepted);
-        var pcm = new byte[AudioFormat.BlockBytes]; MemoryMarshal.Cast<byte,float>(pcm).Fill(.1f);
+        var pcm = new byte[AudioFormat.BlockBytes]; MemoryMarshal.Cast<byte,float>(pcm.AsSpan()).Fill(.1f);
         await client.WriteAsync(pcm, deadline.Token); var ack = new byte[1]; await client.ReadExactlyAsync(ack, deadline.Token); Assert.Equal(6, ack[0]);
         var programme = new byte[AudioFormat.BlockBytes]; input.Mix(programme);
         Assert.Equal(.1f, MemoryMarshal.Cast<byte,float>(programme)[0]);
