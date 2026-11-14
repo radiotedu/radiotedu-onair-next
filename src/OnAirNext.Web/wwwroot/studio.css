@@ -36,3 +36,14 @@ dialog{width:min(650px,calc(100vw - 40px));border:1px solid #455c74;border-radiu
 @media(max-width:520px){.report-form{grid-template-columns:1fr;padding:16px}.report-feedback{padding:0 16px 16px}.report-receipt>div{grid-template-columns:1fr;gap:5px}}
 
 .migration-panel .setup-body{display:grid;gap:14px}.migration-panel table{min-width:880px}.migration-panel td{vertical-align:top;max-width:360px}.migration-panel .asset-path{overflow-wrap:anywhere;white-space:normal;margin:0 0 7px}.migration-panel td select{min-width:170px}.migration-panel #migration-backup{overflow-wrap:anywhere}
+
+.mic-controls{display:grid;gap:10px;padding:16px}.mic-controls select{max-width:100%;min-width:0}.mic-controls meter{width:100%}.mic-controls .toolbar{flex-wrap:wrap}.mic-controls p{font-size:12px;line-height:1.5}.panel-heading #mic-state.mic-is-live{color:#fff;background:#b42332;border-radius:4px;padding:4px 7px;font-size:12px;font-weight:700;letter-spacing:.02em}
+
+.wizard-fields{display:grid;grid-template-columns:2fr 1fr 1fr 2fr;gap:12px;margin-block:12px}.wizard-fields label{display:grid;gap:6px}.wizard-fields input{min-width:0}.wizard-summary{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}.developer-brand{background:#111921;color:white;display:flex;align-items:center;flex-wrap:wrap;gap:14px;padding:16px;margin-top:18px;border-radius:8px}.developer-brand img{max-width:160px;object-fit:contain}.rtai-word{font-size:38px;font-weight:800;letter-spacing:-.095em}.rtai-word span{color:#f44c48;font-style:italic}@media(max-width:900px){.wizard-fields{grid-template-columns:1fr 1fr}}
+
+/* Keep setup and microphone controls consistent with the operator console. */
+#wizard-form input:not([type=checkbox]),.mic-controls select{width:100%;min-height:38px;background:#0d1821;color:var(--text,#dae4ea);border:1px solid var(--line);border-radius:3px;padding:8px 10px;font:inherit;color-scheme:dark}
+#wizard-form input:focus,.mic-controls select:focus{outline:2px solid #75a9bd;outline-offset:2px}
+#wizard-channels td:nth-child(3){min-width:140px}#wizard-channels td:last-child{min-width:180px}#wizard-channels td:last-child button{margin:3px}
+#wizard-open-installation{width:fit-content}.mic-controls input[type=range]{width:100%}.mic-controls label{font-size:12px;color:var(--muted)}.mic-controls input[type=checkbox]{accent-color:#a7cadb}.mic-controls meter{height:12px}#mic-confirm{width:min(520px,92vw)}
+@media(max-width:1100px){.wizard-fields{grid-template-columns:1fr 1fr}}

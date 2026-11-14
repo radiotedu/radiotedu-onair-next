@@ -10,6 +10,11 @@ if(!OperatingSystem.IsWindows())return 2;
 string? audioReviewStage=null;
 try
 {
+    if(args.Length==1&&args[0]=="--start-owned-service")
+    {
+        using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await SetupService.StartStoppedAsync(deadline.Token); return 0;
+    }
     if(args.Length==3&&args[0]=="--prepare-audio-tools")
     {
         WindowsOwnedJob.AttachCurrentProcess();

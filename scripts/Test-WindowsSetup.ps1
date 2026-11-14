@@ -10,11 +10,11 @@ $summary=Join-Path $PSScriptRoot '../artifacts/setup-smoke/summary.json'
 $checks=[Collections.Generic.List[string]]::new();$completed=$false;$failure=$null;$owned=$false;$plan=$null;$webProcess=$null;$shortcutPaths=@();$maintenance=$null;$review=$null;$updateFailures=@();$updateIntent=$null
 $audioToolsReview=$null;$audioToolsReceipt=$null
 function Check([string]$name,[bool]$value){if(-not $value){throw ('Setup check failed: '+$name)};$checks.Add($name)}
-function Run([string]$exe,[string[]]$arguments){
+function Run([string]$exe,[string[]]$arguments,[int]$timeoutSeconds=240){
  $start=[Diagnostics.ProcessStartInfo]::new($exe);$start.UseShellExecute=$false;$start.CreateNoWindow=$true;$start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
  foreach($argument in $arguments){$start.ArgumentList.Add($argument)}
  $process=[Diagnostics.Process]::Start($start);$out=$process.StandardOutput.ReadToEndAsync();$err=$process.StandardError.ReadToEndAsync()
- try{if(-not $process.WaitForExit(240000)){$process.Kill($true);$process.WaitForExit(10000)|Out-Null;throw 'Owned setup fixture process exceeded its deadline'};if($process.ExitCode -ne 0){$stdout=$out.GetAwaiter().GetResult();$stderr=$err.GetAwaiter().GetResult();throw ('Setup process failed ('+$process.ExitCode+', '+$arguments[0]+'): '+$stdout.Substring(0,[Math]::Min(2048,$stdout.Length))+' '+$stderr.Substring(0,[Math]::Min(2048,$stderr.Length)))};return $out.GetAwaiter().GetResult()}finally{$process.Dispose()}
+ try{if(-not $process.WaitForExit($timeoutSeconds*1000)){$process.Kill($true);$process.WaitForExit(10000)|Out-Null;throw ('Owned setup fixture process exceeded its '+$timeoutSeconds+' second deadline: '+$arguments[0])};if($process.ExitCode -ne 0){$stdout=$out.GetAwaiter().GetResult();$stderr=$err.GetAwaiter().GetResult();throw ('Setup process failed ('+$process.ExitCode+', '+$arguments[0]+'): '+$stdout.Substring(0,[Math]::Min(2048,$stdout.Length))+' '+$stderr.Substring(0,[Math]::Min(2048,$stderr.Length)))};return $out.GetAwaiter().GetResult()}finally{$process.Dispose()}
 }
 function Open-ExternalFixtureConsole {
  if($script:webProcess){if(-not $script:webProcess.HasExited){throw 'Close the owned fixture console before reopening it'};$script:webProcess.Dispose()}
@@ -42,6 +42,8 @@ try{
   $source=if($PackageRoot){Join-Path ([IO.Path]::GetFullPath($PackageRoot)) $pair.Folder}else{Join-Path $BuildRoot ($pair.Project+'/release')}
   foreach($entry in Get-ChildItem -LiteralPath $source -Force){Copy-Item -LiteralPath $entry.FullName -Destination $destination -Recurse}
  }
+ $bundleFolders=@('bin','console','setup')
+ if($PackageRoot -and (Test-Path -LiteralPath (Join-Path $PackageRoot 'desktop'))){Copy-Item -LiteralPath (Join-Path $PackageRoot 'desktop') -Destination (Join-Path $fixture 'desktop') -Recurse;$bundleFolders+='desktop'}
  # Explicit synthetic provider for file/SCM tests; real provider preparation has a separate CI receipt.
  $runtimePackage=Join-Path $fixture 'runtime';$runtime=Join-Path $runtimePackage 'bin';$null=New-Item -ItemType Directory -Path $runtime
  foreach($entry in Get-ChildItem -LiteralPath (Join-Path $BuildRoot 'OnAirNext.Lab/release') -Force){Copy-Item -LiteralPath $entry.FullName -Destination $runtime -Recurse}
@@ -55,7 +57,7 @@ try{
  $providerManifest=@{schemaVersion=1;target='win-x64-listing-only-software-fixture';dependencyLockSha256=(Get-FileHash -LiteralPath (Join-Path $runtimePackage 'windows-codec.lock.json') -Algorithm SHA256).Hash;buildScriptSha256=(Get-FileHash -LiteralPath (Join-Path $runtimePackage 'Sources/build-windows-codecs.py') -Algorithm SHA256).Hash;files=$runtimeFiles}
  $providerManifest|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $runtimePackage 'runtime-manifest.json') -Encoding utf8NoBOM
  Copy-Item -LiteralPath (Join-Path $runtimePackage 'runtime-manifest.json') -Destination (Join-Path $fixture 'setup/codec-runtime-reference.json') -Force
- $files=@(foreach($folder in @('bin','console','setup')){foreach($file in Get-ChildItem -LiteralPath (Join-Path $fixture $folder) -Recurse -File){@{Path=[IO.Path]::GetRelativePath($fixture,$file.FullName).Replace('\','/');Bytes=$file.Length;Sha256=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash}}})
+ $files=@(foreach($folder in $bundleFolders){foreach($file in Get-ChildItem -LiteralPath (Join-Path $fixture $folder) -Recurse -File){@{Path=[IO.Path]::GetRelativePath($fixture,$file.FullName).Replace('\','/');Bytes=$file.Length;Sha256=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash}}})
  @{Source=$env:GITHUB_SHA;Files=$files}|ConvertTo-Json -Depth 8|Set-Content -LiteralPath (Join-Path $fixture 'bundle.json') -Encoding utf8NoBOM
  $request=Join-Path $fixture 'request.json';@{RuntimeFolder=$runtimePackage;StartService=$true}|ConvertTo-Json|Set-Content -LiteralPath $request -Encoding utf8NoBOM
  $setup=Join-Path $fixture 'setup/OnAirNext.Setup.exe'
@@ -80,8 +82,10 @@ try{
  Check 'Initial installation contains eight stopped channels and no outputs' ($config.Stations.Count -eq 8 -and @($config.Stations|Where-Object {$_.AutoStart -or $_.Outputs.Count -ne 0}).Count -eq 0)
  $service=Get-CimInstance Win32_Service -Filter ("Name='"+$serviceName+"'")
  Check 'Only the isolated LocalService image is registered' ($service.StartName -eq 'NT AUTHORITY\LocalService' -and $service.PathName.StartsWith('"'+[IO.Path]::GetFullPath((Join-Path $install 'bin/OnAirNext.Host.exe'))+'"',[StringComparison]::OrdinalIgnoreCase))
- $lab=Join-Path $BuildRoot 'OnAirNext.Lab/release/OnAirNext.Lab.exe';$deadline=[DateTime]::UtcNow.AddSeconds(45);$state=$null
- do{try{$state=(Run $lab @('--service-probe','status'))|ConvertFrom-Json;if($state.stations.Count -eq 8){break}}catch{};Start-Sleep -Milliseconds 200}while([DateTime]::UtcNow -lt $deadline)
+ $lab=Join-Path $BuildRoot 'OnAirNext.Lab/release/OnAirNext.Lab.exe';$deadline=[DateTime]::UtcNow.AddSeconds(45);$state=$null;$probeFailure=$null
+ do{try{$state=(Run $lab @('--service-probe','status'))|ConvertFrom-Json;if($state.stations.Count -eq 8){break};$probeFailure=$state|ConvertTo-Json -Depth 5 -Compress}catch{$probeFailure=$_.Exception.Message};Start-Sleep -Milliseconds 200}while([DateTime]::UtcNow -lt $deadline)
+ if($state.stations.Count -ne 8){throw ('Installed service status failed: '+$probeFailure)}
+ if($bundleFolders -contains 'desktop'){Check 'Complete native desktop payload is installed with reviewed hashes' (@($files|Where-Object {$_.Path.StartsWith('desktop/')}|Where-Object {-not(Test-Path -LiteralPath (Join-Path $install $_.Path)) -or (Get-FileHash -LiteralPath (Join-Path $install $_.Path) -Algorithm SHA256).Hash -ne $_.Sha256}).Count -eq 0 -and (Test-Path -LiteralPath (Join-Path $install 'desktop/RadioTEDU OnAir Next.exe')))}
  Check 'Installed engine is authenticated and all eight requested states are stopped' ($state.stations.Count -eq 8 -and @($state.stations|Where-Object RequestedRunning).Count -eq 0)
  $runtimeHash=(Get-FileHash -LiteralPath (Join-Path $runtime 'ffmpeg.exe') -Algorithm SHA256).Hash
  if($PackageRoot){$hostProcess=[Diagnostics.Process]::GetProcessById($service.ProcessId);try{Check 'Installed service uses its packaged runtime without global dotnet' (@($hostProcess.Modules|Where-Object {$_.ModuleName -eq 'coreclr.dll' -and $_.FileName.StartsWith((Join-Path $install 'bin')+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)}).Count -eq 1)}finally{$hostProcess.Dispose()}}
@@ -233,12 +237,14 @@ try{
  Check 'Read-only review retains original operator configuration and exact service process' ($review.OperatorSid -eq $plan.OperatorSid -and $review.ConfigurationSha256 -eq $before -and $review.ServiceProcessId -eq $service.ProcessId -and (Get-FileHash -LiteralPath (Join-Path $data 'host.json') -Algorithm SHA256).Hash -eq $before)
  $reviewPath=Join-Path $fixture 'update-review.json';$review|ConvertTo-Json -Depth 24|Set-Content -LiteralPath $reviewPath -Encoding utf8NoBOM
  $reviewHash=(Get-FileHash -LiteralPath $reviewPath -Algorithm SHA256).Hash
- $null=Run $setup @('--apply-update',$reviewPath,$reviewHash)
+ $updateDeadline=[Math]::Min(1200,[Math]::Max(240,[Math]::Ceiling(($files|Measure-Object -Property Bytes -Sum).Sum/(2*1024*1024))+180))
+ $null=Run $setup @('--apply-update',$reviewPath,$reviewHash) ([int]$updateDeadline)
  $operationFolder=Join-Path $data ('updates/'+$review.Files.Id)
  $completion=Get-Content -LiteralPath (Join-Path $operationFolder 'apply.completed.json') -Raw|ConvertFrom-Json
  $snapshot=Get-Content -LiteralPath (Join-Path $operationFolder 'snapshot.json') -Raw|ConvertFrom-Json
  Check 'Completed snapshot names a retained operation-local attempt' ($snapshot.Folder -match '^snapshot-[a-f0-9]{32}$')
  Check 'Reviewed update retains the original image and a verified metadata snapshot' ((Test-Path -LiteralPath ($install+'.previous-'+$review.Files.Id)) -and (Test-Path -LiteralPath (Join-Path $operationFolder ($snapshot.Folder+'/data/journal/playback.db'))) -and $completion.ImageSha256 -eq $review.Files.Replacement.BundleSha256)
+ if($bundleFolders -contains 'desktop'){$desktopIds=@(foreach($root in @($install,($install+'.previous-'+$review.Files.Id))){$idText=& "$env:SystemRoot/System32/fsutil.exe" file queryfileid (Join-Path $root 'desktop/RadioTEDU OnAir Next.exe');if($LASTEXITCODE -ne 0){throw 'Desktop file identity query failed'};[regex]::Match(($idText -join ' '),'0x[0-9a-fA-F]+').Value});Check 'Unchanged desktop payload is reused without rewriting the retained image' ($desktopIds.Count -eq 2 -and $desktopIds[0] -ne '' -and $desktopIds[0] -eq $desktopIds[1])}
  $updatedService=Get-CimInstance Win32_Service -Filter ("Name='"+$serviceName+"'")
  $null=Run $setup @('--apply-update',$reviewPath,$reviewHash)
  Check 'Completed update retry does not restart the verified service' ((Get-CimInstance Win32_Service -Filter ("Name='"+$serviceName+"'")).ProcessId -eq $updatedService.ProcessId)

@@ -1,13 +1,17 @@
 'use strict';
 const {app,BrowserWindow,Tray,Menu,dialog,shell,session,nativeImage}=require('electron');
-const {spawn}=require('node:child_process');
+const {spawn,execFileSync}=require('node:child_process');
 const fs=require('node:fs/promises'),http=require('node:http'),path=require('node:path'),crypto=require('node:crypto');
 const {ORIGIN,allowedNavigation,allowedPermission,shouldRetrySession,verifiedDescriptor,consoleUrl}=require('./policy.cjs');
 const {ensureDesktopShortcut}=require('./shortcut.cjs');
 let window=null,tray=null,quitting=false,opening=null,pendingOpen=false;
 // The descriptor belongs to the signed-in operator, independently of Electron's profile.
-const endpoint=path.join(process.env.LOCALAPPDATA||'', 'RadioTEDU','OnAirNext-Dev','browser-console','access','console.json');
-const web=path.join(process.env.ProgramFiles||'C:\\Program Files','RadioTEDU-OnAirNext-Development','console','OnAirNext.Web.exe');
+const mac=process.platform==='darwin';
+const macPaths=mac&&app.isPackaged?JSON.parse(execFileSync(path.join(process.resourcesPath,'engine','OnAirNext.Host'),['--macos-paths'],{encoding:'utf8',timeout:5000,env:{...process.env,TMPDIR:'/tmp'}})):null;
+const endpoint=macPaths?.descriptor || path.join(process.env.LOCALAPPDATA||'', 'RadioTEDU','OnAirNext-Dev','browser-console','access','console.json');
+const setupArgument=process.argv.indexOf('--setup-package');
+const setupPackage=setupArgument>=0&&process.argv[setupArgument+1]?path.resolve(process.argv[setupArgument+1]):null;
+const web=mac?path.join(process.resourcesPath,'console','OnAirNext.Web'):setupPackage?path.join(setupPackage,'console','OnAirNext.Web.exe'):path.join(process.env.ProgramFiles||'C:\\Program Files','RadioTEDU-OnAirNext-Development','console','OnAirNext.Web.exe');
 function health(){return new Promise((resolve,reject)=>{
  let body='',done=false;const finish=(error,value)=>{if(done)return;done=true;error?reject(error):resolve(value)};
  const req=http.get(ORIGIN+'/api/health',{agent:false,timeout:5000},res=>{
@@ -19,10 +23,13 @@ function health(){return new Promise((resolve,reject)=>{
  req.on('error',err=>err.code==='ECONNREFUSED'?finish(null,null):finish(err));
 })}
 async function readReady(allowNotReady=false){const h=await health();if(!h)return null;let d;
+ if(setupPackage){const bundle=JSON.parse(await fs.readFile(path.join(setupPackage,'bundle.json'),'utf8'));if(!/^[0-9a-f]{40}$/i.test(bundle.Source||'')||!h.version?.endsWith('+'+bundle.Source))throw new Error('A different console version is open. Use Close console in its System screen, then open this setup again. Broadcasts continue in the service.');}
  try{d=JSON.parse(await fs.readFile(endpoint,'utf8'))}catch(error){if(allowNotReady&&(error.code==='ENOENT'||error instanceof SyntaxError))return null;throw new Error('Open the console using the Windows account that owns its session.')}
  if(!verifiedDescriptor(h,d))throw new Error('The console session could not be verified.');return d;
 }
 async function consoleEnvironment(){
+ if(mac)return {...process.env,TMPDIR:'/tmp'};
+ if(setupPackage)return process.env;
  const base=path.join(process.env.LOCALAPPDATA||'', 'RadioTEDU','OnAirNext-Desktop');
  const root=path.join(base,'webroots','startup-session-cea8313');
  try{
@@ -45,7 +52,7 @@ async function ensureConsole(){
 }
 function newWindow(){
  const w=new BrowserWindow({width:1450,height:920,minWidth:900,minHeight:600,show:false,title:'RadioTEDU OnAir Next',icon:path.join(__dirname,'icon.png'),
-  webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
+  webPreferences:{backgroundThrottling:false,nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true}});
  w.webContents.on('will-navigate',(event,url)=>{if(!allowedNavigation(url))event.preventDefault()});
  w.webContents.on('will-redirect',(event,url)=>{if(!allowedNavigation(url))event.preventDefault()});
  w.webContents.setWindowOpenHandler(()=>({action:'deny'}));
@@ -68,19 +75,32 @@ async function showWindow(){
  try{return await opening}finally{opening=null}
 }
 async function openBrowser(){try{const d=await ensureConsole();await shell.openExternal(consoleUrl(d))}catch(error){dialog.showErrorBox('RadioTEDU OnAir Next',String(error.message||error))}}
+async function finishSetupDesktop(){
+ const install=path.join(process.env.ProgramFiles||'C:\\Program Files','RadioTEDU-OnAirNext-Development');
+ try{
+  const receipt=JSON.parse(await fs.readFile(path.join(process.env.ProgramData||'C:\\ProgramData','RadioTEDU-OnAirNext-Development','setup-status.json'),'utf8'));
+  const bundle=JSON.parse(await fs.readFile(path.join(setupPackage,'bundle.json'),'utf8'));
+  if(receipt.Phase!=='Installed'||receipt.Source!==bundle.Source)return false;
+  const exe=path.join(install,'desktop','RadioTEDU OnAir Next.exe');await fs.access(exe);
+  await ensureDesktopShortcut(shell,app.getPath('desktop'),exe,path.join(install,'setup','OnAirNext.Setup.exe'),path.join(install,'desktop/resources/app/icon.ico'));
+  app.setLoginItemSettings({openAtLogin:true,path:exe,args:['--background']});return true;
+ }catch{return false}
+}
 function makeTray(){const icon=nativeImage.createFromPath(path.join(__dirname,'icon.png'));tray=new Tray(icon);tray.setToolTip('RadioTEDU OnAir Next');
  tray.setContextMenu(Menu.buildFromTemplate([{label:'Open RadioTEDU OnAir Next',click:()=>void showWindow()},{label:'Open in browser',click:()=>void openBrowser()},{type:'separator'},{label:'Exit window',click:()=>{quitting=true;app.quit()}}]));
  tray.on('double-click',()=>void showWindow());}
 if(!app.requestSingleInstanceLock())app.quit();else{
+ app.on('activate',()=>{void showWindow()});
  app.on('second-instance',(_event,args)=>{if(!args.includes('--background')){if(app.isReady())void showWindow();else pendingOpen=true}});
  app.on('before-quit',()=>{quitting=true});app.on('window-all-closed',()=>{});
  app.whenReady().then(async()=>{
-  app.setAppUserModelId('com.radiotedu.onairnext');
+  if(!mac)app.setAppUserModelId('com.radiotedu.onairnext');
   session.defaultSession.setPermissionCheckHandler((_wc,permission,origin,details)=>allowedPermission(permission,origin,details));
   session.defaultSession.setPermissionRequestHandler((wc,permission,callback,details)=>callback(allowedPermission(permission,details?.requestingUrl||wc?.getURL()||'',details)));
   makeTray();if(app.isPackaged){
-   app.setLoginItemSettings({openAtLogin:true,path:process.execPath,args:['--background']});
-   try{await ensureDesktopShortcut(shell,app.getPath('desktop'),process.execPath,path.join(process.env.ProgramFiles||'C:\\Program Files','RadioTEDU-OnAirNext-Development','setup','OnAirNext.Setup.exe'),path.join(__dirname,'icon.ico'))}
+   if(!setupPackage)app.setLoginItemSettings({openAtLogin:true,path:process.execPath,args:['--background']});
+   else {const timer=setInterval(()=>{void finishSetupDesktop().then(done=>{if(done)clearInterval(timer)})},3000);timer.unref();}
+   try{if(!mac&&!setupPackage)await ensureDesktopShortcut(shell,app.getPath('desktop'),process.execPath,path.join(process.env.ProgramFiles||'C:\\Program Files','RadioTEDU-OnAirNext-Development','setup','OnAirNext.Setup.exe'),path.join(__dirname,'icon.ico'))}
    catch(error){if(!process.argv.includes('--background'))dialog.showErrorBox('Desktop shortcut',String(error.message||error))}
   }
   if(pendingOpen||!process.argv.includes('--background'))void showWindow();else void ensureConsole().catch(()=>{});

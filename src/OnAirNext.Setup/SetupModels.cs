@@ -71,7 +71,7 @@ public static class SetupPaths
         {
             if(file is null||file.Path is null||file.Sha256 is null||file.Bytes<=0||file.Bytes>MaximumBundleBytes||file.Sha256.Length!=64||!file.Sha256.All(Uri.IsHexDigit))throw new ArgumentException("Invalid package file identity.");
             if(!names.Add(file.Path))throw new ArgumentException("Duplicate package file path.");
-            if(bundle&&!new[]{"bin/","console/","setup/"}.Any(prefix=>file.Path.StartsWith(prefix,StringComparison.Ordinal)))throw new ArgumentException("Unexpected package component.");
+            if(bundle&&!new[]{"bin/","console/","setup/","desktop/"}.Any(prefix=>file.Path.StartsWith(prefix,StringComparison.Ordinal)))throw new ArgumentException("Unexpected package component.");
             if(!bundle&&!RuntimePathAllowed(file.Path))throw new ArgumentException("Unexpected runtime file.");
             total+=file.Bytes;if(total>MaximumBundleBytes)throw new ArgumentException("Package exceeds the installation size limit.");
         }

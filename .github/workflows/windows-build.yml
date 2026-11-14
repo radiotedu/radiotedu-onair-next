@@ -3,6 +3,7 @@ on:
   pull_request:
   push:
     branches: [main, broadcast-pc-recovery-20261015]
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       public_listeners_only:
@@ -203,7 +204,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Cue worklet syntax failed." }
           node --check src/OnAirNext.Web/wwwroot/queue.js
           if ($LASTEXITCODE -ne 0) { throw "Queue script syntax failed." }
-          node --test tests/browser/loudness-view.test.cjs tests/browser/private-cue-worklet.test.cjs tests/browser/queue-view.test.cjs tests/browser/programme-editor-recovery.test.cjs tests/browser/studio-connection.test.cjs tests/browser/crossfade-view.test.cjs | Tee-Object -FilePath artifacts/test-results/browser-cue.tap
+          node --test tests/browser/loudness-view.test.cjs tests/browser/private-cue-worklet.test.cjs tests/browser/queue-view.test.cjs tests/browser/programme-editor-recovery.test.cjs tests/browser/studio-connection.test.cjs tests/browser/crossfade-view.test.cjs tests/browser/microphone-worklet.test.cjs tests/browser/microphone-congestion.test.cjs | Tee-Object -FilePath artifacts/test-results/browser-cue.tap
           if ($LASTEXITCODE -ne 0) { throw "Browser state and cue buffer checks failed." }
       - name: Retain unit test results
         if: always()
@@ -219,6 +220,26 @@ jobs:
         with:
           name: windows-codec-runtime
           path: artifacts/windows-codec-runtime
+      - name: Publish self-contained Windows development package
+        run: ./scripts/Package-Windows.ps1 -CodecRuntimeRoot artifacts/windows-codec-runtime
+      - name: Build native desktop and Windows setup executable
+        run: ./scripts/Package-WindowsInstaller.ps1
+      - name: Qualify guided Windows setup on disposable runner
+        run: ./scripts/Test-WindowsSetup.ps1 -BuildRoot "$env:ONAIR_BUILD_BIN" -PackageRoot artifacts/windows-package
+      - name: Retain setup qualification
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-setup-qualification
+          path: artifacts/setup-smoke/summary.json
+          if-no-files-found: warn
+      - name: Retain operator UI screenshots and evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-operator-ui
+          path: artifacts/operator-ui
+          if-no-files-found: warn
       - name: Qualify real float PCM and isolated audio codecs
         run: ./scripts/Test-WindowsAudio.ps1 -BuildRoot "$env:ONAIR_BUILD_BIN" -CodecRuntimeRoot ./artifacts/windows-codec-runtime
       - name: Retain real isolated audio qualification
@@ -237,17 +258,13 @@ jobs:
           name: windows-service-qualification
           path: artifacts/service-smoke/summary.json
           if-no-files-found: warn
-      - name: Publish self-contained Windows development package
-        run: ./scripts/Package-Windows.ps1 -CodecRuntimeRoot artifacts/windows-codec-runtime
-      - name: Qualify guided Windows setup on disposable runner
-        run: ./scripts/Test-WindowsSetup.ps1 -BuildRoot "$env:ONAIR_BUILD_BIN" -PackageRoot artifacts/windows-package
-      - name: Retain setup qualification
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - name: Retain Windows installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: windows-setup-qualification
-          path: artifacts/setup-smoke/summary.json
-          if-no-files-found: warn
+          name: onair-next-windows-setup
+          path: artifacts/installers
+          retention-days: 14
+          if-no-files-found: error
       - name: Retain compiled development binaries
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

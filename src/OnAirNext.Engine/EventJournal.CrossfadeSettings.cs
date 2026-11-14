@@ -56,11 +56,11 @@ public sealed partial class EventJournal
         return new(station,version,seconds);
     }
 
-    internal static bool HasCrossfadeRecoveryState(SqliteConnection c,SqliteTransaction? t)
+    internal static bool HasCrossfadeRecoveryState(SqliteConnection c,SqliteTransaction? t,bool supportsConfiguredCrossfade=false)
     {
         using var query=c.CreateCommand();query.Transaction=t;
         query.CommandText="SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='station_crossfade'";
-        if(Convert.ToInt32(query.ExecuteScalar())>0)
+        if(Convert.ToInt32(query.ExecuteScalar())>0 && !supportsConfiguredCrossfade)
         {
             query.CommandText="SELECT EXISTS(SELECT 1 FROM station_crossfade WHERE seconds>0)";
             if(Convert.ToInt32(query.ExecuteScalar())!=0)return true;

@@ -4,7 +4,7 @@
   const roster = [{id:'1',name:'Classic'},{id:'2',name:'Lofi'},{id:'4',name:'Pop'},{id:'5',name:'Cazz'},{id:'8',name:'Rock'},{id:'9',name:'Energize'},{id:'10',name:'Situation'},{id:'11',name:'Main Character'}];
   const state = {page:'air',station:'9',engine:null,stations:[],session:null,autoConnect:true,discovering:false,sampleAt:0,polling:false,busy:false,library:null,offset:0,query:'',folder:null,folderGeneration:0,pending:[],stopTarget:null,folderTarget:null,folderSource:null,editTarget:null,assetStateTarget:null,controller:null,consoleClosed:false,upload:null,uploadSelection:null};
   const migration={engine:null,preview:null,loading:false,busy:false,key:null,selects:new Map(),pending:null,submissionError:null};
-  let brandingUI=null,cueUI=null,programmeUI=null,crossfadeUI=null;
+  let brandingUI=null,cueUI=null,programmeUI=null,crossfadeUI=null,microphoneUI=null,setupWizardUI=null;
   let outputProfile=null,outputBusy=false;
   function renderOutputs(){
     const stopped=fresh()&&state.stations.length===8&&state.stations.every(s=>s.State==='Stopped'&&!s.RequestedRunning&&s.Outputs.every(o=>o.State==='Stopped'&&!o.EncoderPid&&!o.QueuedBlocks));
@@ -110,12 +110,12 @@
     text('footer-status',connected?'Engine connected':state.engine?'Reconnecting':'Disconnected');
     text('sample-age',state.sampleAt?`Sample age ${Math.max(0,Math.floor((Date.now()-state.sampleAt)/1000))}s`:'No engine sample');
     text('system-connection',connected?'Connected':'Not connected');
-    text('engine-runtime',!connected?'No engine sample':state.engine==='onair-next-dev-service'&&state.controller?.mode==='windows-service'?'Windows service':state.controller?.mode==='developer'?'Developer host':'Not reported');
+    text('engine-runtime',!connected?'No engine sample':state.engine==='onair-next-dev-service'&&state.controller?.mode==='windows-service'?'Windows service':state.controller?.mode==='macos-service'?'macOS service':state.controller?.mode==='developer'?'Developer host':'Not reported');
     $('footer-dot').classList.toggle('connected',connected);$('engine-dot').classList.toggle('connected',connected);
     $('engine-label').replaceChildren(document.createTextNode(connected?'Engine connected':'Engine not connected'),element('small','',connected?'Isolated development engine':'Existing broadcasts unchanged'));
     $('disconnect-engine').disabled=!state.engine;
     $('retry-command').hidden=!pending();$('retry-command').disabled=!connected||state.busy;
-  libraryControls();renderProgrammeMeter();brandingUI?.update();cueUI?.update();programmeUI?.update();crossfadeUI?.update();
+  setupWizardUI?.update();microphoneUI?.update();libraryControls();renderProgrammeMeter();brandingUI?.update();cueUI?.update();programmeUI?.update();crossfadeUI?.update();
   }
   function libraryControls(){
     const enabled=fresh()&&!state.busy&&!pending();$('choose-folder').disabled=!enabled;$('add-files').disabled=!enabled||!state.library?.canImportFiles;
@@ -229,12 +229,13 @@
     try{const result=await api('/api/engines');const options=result.engines??[];$('engine-select').replaceChildren(...(options.length?options.map(name=>{const option=element('option','',name);option.value=name;return option;}):[element('option','','No engines available')]));$('engine-select').disabled=!options.length;$('connect-engine').disabled=!options.length;text('engine-discovery',options.length?`${options.length} isolated engine${options.length===1?'':'s'} found on this computer.`:result.preview?'Visual preview. No broadcasting engine is connected.':'No isolated engine is running. Review the separate installation below or refresh discovery after service startup.');}
     catch(error){text('engine-discovery','Engine discovery unavailable: '+error.message);}
     finally{state.discovering=false;}
-    if(state.autoConnect&&state.session?.preview===false&&!state.engine&&Array.from($('engine-select').children).some(option=>option.value==='onair-next-dev-service')){
-      state.engine='onair-next-dev-service';$('engine-select').value=state.engine;await poll();
+    const installedEngine=Array.from($('engine-select').children).map(option=>option.value).find(value=>value==='onair-next-dev-service'||value==='onair-next-dev-macos');
+    if(state.autoConnect&&state.session?.preview===false&&!state.engine&&installedEngine){
+      state.engine=installedEngine;$('engine-select').value=state.engine;await poll();
     }
   }
   async function poll(){
-    if(state.polling||!state.engine||document.hidden)return;state.polling=true;const engine=state.engine;
+    if(state.polling||!state.engine||(document.hidden&&!microphoneUI?.active()))return;state.polling=true;const engine=state.engine;
     try{const result=await api('/api/status?engine='+encodeURIComponent(engine));if(engine!==state.engine)return;const previous=state.stations.map(s=>s.Id).join(',');state.stations=result.stations??[];state.controller=result.controller??null;outputProfile=result.commissioning??null;state.sampleAt=Date.now();if(!state.stations.some(s=>s.Id===state.station)&&state.stations.length)state.station=state.stations[0].Id;if(previous!==state.stations.map(s=>s.Id).join(','))stationTabs();text('audit-pending',String(result.audit?.PendingEvents??'—'));text('audit-rejected',String(result.audit?.RejectedEvents??'—'));text('audit-error',result.audit?.Error??'None reported');}
     catch(error){message('Status unavailable: '+error.message);}
     finally{state.polling=false;renderStatus();renderOutputs();void loadQueue();if(state.page==='reports')void loadReports();if(state.page==='system')void loadMigration();}
@@ -255,11 +256,12 @@
   }
   $('retry-command').addEventListener('click',()=>{const saved=pending();if(saved)void command(saved.request.Action,{},saved);});
   $('refresh-engines').addEventListener('click',()=>void discover());
-  $('connect-engine').addEventListener('click',async()=>{state.autoConnect=false;state.engine=$('engine-select').value;state.sampleAt=0;await poll();if(fresh()){message('Connected to the selected engine.');navigate('air');}});
+  $('connect-engine').addEventListener('click',async()=>{state.autoConnect=false;const selected=$('engine-select').value;state.engine=selected;state.sampleAt=0;await poll();if(fresh()&&state.engine===selected){message('Connected to the selected engine.');if(state.page==='system')navigate('air');}});
   $('disconnect-engine').addEventListener('click',()=>{state.autoConnect=false;state.engine=null;state.stations=[];state.sampleAt=0;state.library=null;stationTabs();resetLibrary();renderStatus();message('Console disconnected. The engine continues independently.');});
   $('start-station').addEventListener('click',()=>void command('start-station'));
   $('stop-station').addEventListener('click',()=>{state.stopTarget={station:state.station,engine:state.engine};text('stop-heading','Stop '+stationName()+'?');text('stop-name',stationName());$('stop-dialog').returnValue='cancel';$('stop-dialog').showModal();});
   $('stop-dialog').addEventListener('close',()=>{const target=state.stopTarget;state.stopTarget=null;if($('stop-dialog').returnValue!=='stop')return;if(!target||target.station!==state.station||target.engine!==state.engine){message('Channel changed. Stop was cancelled.');return;}void command('stop-station');});
+  $('open-microphone').addEventListener('click',()=>{$('toggle-inspector').setAttribute('aria-expanded','true');$('channel-inspector').classList.add('expanded');document.querySelector('.microphone-panel').scrollIntoView({block:'center'});$('mic-prepare').focus({preventScroll:true});});
   $('toggle-inspector').addEventListener('click',()=>{const expanded=$('toggle-inspector').getAttribute('aria-expanded')!=='true';$('toggle-inspector').setAttribute('aria-expanded',String(expanded));$('channel-inspector').classList.toggle('expanded',expanded);});
   $('skip-item').addEventListener('click',()=>void command('skip'));
   function assetContext(target){return !!target&&target.engine===state.engine&&target.station===state.station&&target.revision===state.library?.page?.Root?.Revision;}
@@ -438,7 +440,7 @@
       if(data.parent){const up=element('button','','Parent folder');up.type='button';up.addEventListener('click',()=>void browseFolder(data.parent));$('folder-breadcrumb').append(up);}
       if(data.path)$('folder-breadcrumb').append(element('span','quiet',data.path));
       $('folder-list').replaceChildren(...data.folders.map(folder=>{const button=element('button');button.type='button';button.append(icon('folder'),document.createTextNode(folder.name));button.addEventListener('click',()=>void browseFolder(folder.path));return button;}));
-      text('folder-help','External folders are watched read-only in this isolated build.');folderControls();
+      text('folder-help','New stable audio files are detected automatically. Existing files stay unchanged.');folderControls();
     }catch(error){if(generation!==state.folderGeneration)return;state.folder=null;$('folder-list').replaceChildren(element('p','quiet','Folder unavailable. Choose another location.'));text('folder-help',error.message);folderControls();}
   }
   $('choose-folder').addEventListener('click',()=>{state.folderTarget={station:state.station,engine:state.engine};$('folder-dialog').showModal();void browseFolder();});
@@ -576,6 +578,7 @@
     try{
       const previous=setupState?.receipt?.phase;setupState=await api('/api/setup');const plan=setupState.plan,receipt=setupState.receipt;
       text('setup-phase',receipt?.phase??setupState.phase);text('setup-detail',setupState.systemError??setupState.detail);
+      if(!plan&&!setupInputDirty&&setupState.bundledRuntime)$('setup-runtime').value=setupState.bundledRuntime;
       if(plan&&!setupInputDirty&&!setupState.busy){$('setup-runtime').value=plan.runtimeRoot;$('setup-start').checked=plan.startService;}
       $('setup-review').hidden=!plan;
       const properties=plan?[['Installation',setupState.installRoot],['Separate data',setupState.dataRoot],['Windows service account','LocalService'],['Studio operator',plan.operatorSid],['Audio runtime',plan.runtimeRoot],['Package checksum',plan.bundle],['Initial channels','Eight stopped channels · zero armed outputs']]:[];
@@ -705,7 +708,7 @@
     finally{sessionLoading=false;}
   }
   async function initialize(){stationTabs();renderStatus();await connectSession();}
-  let ticks=0;setInterval(()=>{if(document.hidden||state.consoleClosed)return;text('clock',clock.format(new Date()));renderStatus();if(++ticks%2===0){void poll();void pollFolderCheck();}if(ticks%5===0&&!state.session&&!sessionDenied)void connectSession();if(ticks%5===0&&state.autoConnect&&state.session&&!state.engine)void discover();if(ticks%4===0&&state.page==='library')void loadLibrary();if(ticks%4===0&&state.page==='system'){void loadSetup();void loadMigration();void loadAppUpdates();void loadAudioTools();}},1000);text('clock',clock.format(new Date()));document.addEventListener('visibilitychange',()=>{if(!document.hidden){text('clock',clock.format(new Date()));void poll();}});void initialize();
+  let ticks=0;setInterval(()=>{if((document.hidden&&!microphoneUI?.active())||state.consoleClosed)return;text('clock',clock.format(new Date()));renderStatus();if(++ticks%2===0){void poll();void pollFolderCheck();}if(ticks%5===0&&!state.session&&!sessionDenied)void connectSession();if(ticks%5===0&&state.autoConnect&&state.session&&!state.engine)void discover();if(ticks%4===0&&state.page==='library')void loadLibrary();if(ticks%4===0&&state.page==='system'){void loadSetup();void loadMigration();void loadAppUpdates();void loadAudioTools();}},1000);text('clock',clock.format(new Date()));document.addEventListener('visibilitychange',()=>{if(!document.hidden){text('clock',clock.format(new Date()));void poll();}});void initialize();
 
   const reports={items:[],engine:null,loadedAt:0,offset:0,polling:false,busy:false,rows:new Map(),pending:[]};
   try{const saved=JSON.parse(localStorage.getItem('studio-report-requests')??'[]');if(Array.isArray(saved))reports.pending=saved.filter(p=>typeof p.engine==='string'&&/^[0-9a-f]{32}$/.test(p.id??'')&&['day','year'].includes(p.period)&&typeof p.selection==='string').slice(0,16);}catch{}
@@ -775,6 +778,8 @@
   $('reports-prev').addEventListener('click',()=>{reports.offset=Math.max(0,reports.offset-32);void loadReports();});
   $('reports-next').addEventListener('click',()=>{reports.offset+=32;void loadReports();});
   const reportToday=Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Istanbul',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(part=>[part.type,part.value]));$('report-day').value=reportToday.year+'-'+reportToday.month+'-'+reportToday.day;$('report-day').max='9998-12-31';$('report-year').value=reportToday.year;for(const station of roster){const option=element('option','',station.name);option.value=station.id;$('report-station').append(option);}renderReports();
+  setupWizardUI=RadioTeduSetupWizard.create({api,roster,navigate,selectStation,refreshSetup:loadSetup,context:()=>({engine:state.engine,fresh:fresh(),mode:state.controller?.mode,service:['windows-service','macos-service'].includes(state.controller?.mode),supported:state.controller?.capabilities?.includes('commissioning-custom-profile-v1')===true,stations:state.stations})});
+  microphoneUI=RadioTeduMicrophone.create({context:()=>({engine:state.engine,station:state.station,name:stationName(),fresh:fresh(),running:current()?.State==='Running',supported:state.controller?.capabilities?.includes('live-microphone-v1')===true,token:state.session?.token})});
   cueUI=RadioTeduCue.create({api,
     context:()=>({engine:state.engine,fresh:fresh(),busy:state.busy,supported:state.controller?.capabilities?.includes('private-cue-v1')===true}),
     stream:(body,signal)=>fetch('/api/private-cue',{method:'POST',headers:{'Content-Type':'application/json','X-Studio-Token':state.session?.token??''},body:JSON.stringify(body),credentials:'same-origin',signal})

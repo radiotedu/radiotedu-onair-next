@@ -8,7 +8,7 @@ namespace OnAirNext.Host;
 
 internal static class EngineHost
 {
-    public static async Task<int> RunAsync(string configPath, bool serviceMode, CancellationToken externalStop, Action ready, Action stopping)
+    public static async Task<int> RunAsync(string configPath, bool serviceMode, CancellationToken externalStop, Action ready, Action stopping, bool macService = false)
     {
         if (serviceMode)
         {
@@ -21,6 +21,12 @@ internal static class EngineHost
         var json = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var config = JsonSerializer.Deserialize<HostSettings>(await File.ReadAllTextAsync(configPath, externalStop), json)
             ?? throw new InvalidDataException("Missing engine configuration.");
+        if(macService)
+        {
+            MacService.RequireInstalled(configPath);
+            if(config.PipeName!=MacService.Pipe || config.DataRoot!=MacService.Data || config.Ffmpeg!=Path.Combine(MacService.Resources,"audio-runtime","bin","ffmpeg") || config.Commissioning)
+                throw new ArgumentException("The installed macOS service settings changed. Restore the protected installation configuration.");
+        }
         ProductionOutputConfiguration? storedOutputProfile = null;
         if (serviceMode && OperatingSystem.IsWindows())
         {
@@ -36,7 +42,16 @@ internal static class EngineHost
                 };
             }
         }
-        if (config.Commissioning && !serviceMode)
+        if(macService)
+        {
+            storedOutputProfile=MacService.Load(config.Stations.Select(station=>station.Id),json);
+            if(storedOutputProfile is not null)
+            {
+                var groups=storedOutputProfile.Stations.ToDictionary(group=>group.StationId,group=>group.Outputs,StringComparer.Ordinal);
+                config=config with {Commissioning=true,Stations=config.Stations.Select(station=>station with {Outputs=groups[station.Id]}).ToList()};
+            }
+        }
+        if (config.Commissioning && !serviceMode && !macService)
             throw new ArgumentException("Production destinations are available only through the protected installed Windows service.");
         if (!config.Commissioning && config.Stations.SelectMany(station => station.Outputs).Any(output => output.Commissioned))
             throw new ArgumentException("Production destinations require an explicit commissioning configuration.");
@@ -73,7 +88,7 @@ internal static class EngineHost
         var brandingStations=config.Stations.Where(x=>x.Repeat).Select(x=>x.Id).ToArray();
         var brandingKinds=StationBranding.InventoryKinds(brandingStations);
         var libraryInventories=brandingStations.Concat(brandingKinds.Keys).ToArray();
-        await using var library = new StationLibrary(journal, config.Ffmpeg, config.DataRoot, libraryInventories,contentKinds:brandingKinds);
+        await using var library = new StationLibrary(journal, config.Ffmpeg, config.DataRoot, libraryInventories,contentKinds:brandingKinds, allowAssignedFolderUploads:(serviceMode || macService) && config.Commissioning);
         using var branding = new StationBranding(journal,library,brandingStations);
         using var queues = new StationQueues(journal,library,brandingStations);
         var crossfades = new StationCrossfades(journal,config.Stations);
@@ -127,6 +142,7 @@ internal static class EngineHost
             await using var reports = new ReportExports(journal, config.Stations.Select(station => station.Id));
             await reports.InitializeAsync();
             await using var reportServer = new ReportPipeServer(config.PipeName, serviceMode, servicePolicy, reports, stop.Token);
+            await using var microphone = new MicrophonePipeServer(config.PipeName, serviceMode, servicePolicy, coordinator.Microphone, stop.Token);
             await using var privateCue=new PrivateCuePipeServer(config.PipeName,serviceMode,servicePolicy,library,config.Ffmpeg,stop.Token);
             await using var legacyPreviews = new LegacyImportPreviews(config.DataRoot, config.Stations.Select(station => station.Id),
                 () => coordinator.Snapshot().All(station => station.State == "Stopped" && station.Outputs.Count == 0));
@@ -173,9 +189,13 @@ internal static class EngineHost
                                             stationId = station.Id, output.Id, output.Host, output.Port, output.Mount, output.Profile, output.Information
                                         })).ToArray()
                                     } : null,
-                                    controller = new { mode = serviceMode ? "windows-service" : "developer", service = serviceMode ? ServiceEndpoint.Name : null,
-                            capabilities = new[] { "legacy-music-assignment-v1", RecoveryCompatibility.HeldRotationFeature, "branding-library-v1", "private-cue-v1", RecoveryCompatibility.StationQueueFeature, RecoveryCompatibility.ProgrammeAutomationFeature, RecoveryCompatibility.CrossfadeFeature, "commissioning-output-profile-v1", "commissioning-output-roster-v1", "programme-drafts-v1", "programme-execution-v1", "crossfade-settings-v1" } } });
+                                    controller = new { mode = macService ? "macos-service" : serviceMode ? "windows-service" : "developer", service = serviceMode ? ServiceEndpoint.Name : null,
+                            capabilities = new[] { "legacy-music-assignment-v1", RecoveryCompatibility.HeldRotationFeature, "branding-library-v1", "private-cue-v1", RecoveryCompatibility.StationQueueFeature, RecoveryCompatibility.ProgrammeAutomationFeature, RecoveryCompatibility.CrossfadeFeature, "commissioning-output-profile-v1", "commissioning-output-roster-v1", "programme-drafts-v1", "programme-execution-v1", "crossfade-settings-v1", "live-microphone-v1", "commissioning-custom-profile-v1" } } });
                                 break;
+                            case "commission-output-profile" when macService && request.OutputProfile is { } macProfile:
+                                if(coordinator.Snapshot().Any(station=>station.State!="Stopped"||station.RequestedRunning||station.Outputs.Any(output=>output.State!="Stopped"||output.EncoderPid is not null||output.QueuedBlocks!=0)))throw new InvalidOperationException("Stop all channels before changing destinations.");
+                                MacService.Save(macProfile,config.Stations.Select(station=>station.Id),json);
+                                shutdown=true;result=JsonSerializer.Serialize(new {accepted=true,restartRequired=true});break;
                             case "commission-output-profile" when serviceMode && OperatingSystem.IsWindows() && request.OutputProfile is { } outputProfile:
                                 CommissioningOutputStore.RequireAllDisarmed(coordinator.Snapshot());
                                 var validProfile = outputProfile.Validate(config.Stations.Select(station => station.Id));
@@ -314,7 +334,7 @@ internal static class EngineHost
                                 });
                                 result = JsonSerializer.Serialize(new { accepted = true, assignment = journal.LegacyMusicAssignment(request.Id) }); break;
                             case "library-root" when request.StationId is { } rootStation && request.Path is { } rootPath:
-                                await library.SetRootAsync(rootStation, rootPath, request.Id, serviceMode
+                                await library.SetRootAsync(rootStation, rootPath, request.Id, (serviceMode || macService)
                                     ? () => sourceChecks.RequireReady(rootStation, rootPath, request.SourceCheckId) : null);
                                 result = "{\"accepted\":true}"; break;
                             case "library-import" when request.StationId is { } importStation && request.Paths is { } importPaths:

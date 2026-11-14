@@ -1,6 +1,6 @@
 # RadioTEDU OnAir Next
 
-OnAir Next is a Windows radio automation and playout system. A Windows service runs each station's audio programme and sends it to its configured streaming outputs. Operators manage the service through a local browser console or the optional Windows desktop shell.
+OnAir Next is a radio automation and playout system with Windows and macOS installer work under qualification. A Windows service runs each station's audio programme and sends it to its configured streaming outputs. Operators manage the service through a local browser console or the optional Windows desktop shell.
 
 RadioTEDU's November 2026 handoff moved eight stations and sixteen configured outputs to OnAir Next. The transfer record describes the installed system at the time of handoff. This repository contains the application source and its test fixtures. The GitHub revision and the build installed on a broadcasting PC are tracked separately. [Transfer record](docs/PRODUCTION_TRANSFER_20261105.md)
 
@@ -15,6 +15,10 @@ Open the installed OnAir Next shortcut as the Windows operator. The launcher ope
 - **System** manages the local engine connection and provides setup and maintenance controls.
 
 [Browser operator guide](docs/BROWSER_OPERATOR_GUIDE.md) · [Live folder workflow](docs/LIVE_FOLDER_OPERATOR_WORKFLOW.md) · [Programme scheduling](docs/PROGRAMME_DRAFT_UI_ACCEPTANCE.md)
+
+## Operator release
+
+The operator release adds a station-bound live microphone panel, uploads into assigned live folders, a guided Icecast setup screen, and native Windows / Apple Silicon / Intel Mac installer builds. [Setup and microphone guide](docs/OPERATOR_SETUP_AND_MICROPHONE.md). Installer artifacts and release notes must state their actual test and code-signing status. The installed broadcasting version remains independent of source changes.
 
 ## Windows setup
 

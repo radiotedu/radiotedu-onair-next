@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+major=$(/usr/bin/sw_vers -productVersion | /usr/bin/cut -d. -f1)
+if [[ "$major" -lt 14 ]]; then
+  echo "OnAir Next requires macOS 14 or newer." >&2
+  exit 1
+fi
+if [[ -d "/Applications/RadioTEDU OnAir Next.app" ]]; then
+  echo "An OnAir Next installation already exists. It was left unchanged. Use a reviewed update with a backup instead of overwriting an installed broadcaster." >&2
+  exit 1
+fi
+if /bin/launchctl print system/com.radiotedu.onairnext.engine >/dev/null 2>&1; then
+  echo "The broadcasting engine is already installed. No service was stopped." >&2
+  exit 1
+fi

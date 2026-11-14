@@ -34,12 +34,13 @@ var uploads = new SemaphoreSlim(1, 1);
 var meterRequests = new SemaphoreSlim(1, 1);
 var allowedActions = new HashSet<string>(StringComparer.Ordinal) { "start-station", "stop-station", "skip", "library-root", "library-legacy-root", "library-source-check", "library-managed", "library-rescan", "library-metadata", "library-reset-metadata", "library-retire", "library-restore", "library-analyze-loudness", "branding-save", "crossfade-save", "queue-append", "queue-up", "queue-down", "queue-remove" };
 var extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".aif", ".aiff", ".wma", ".mp4" };
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(10) });
 app.Use(async (context, next) =>
 {
     var request = context.Request;
     if (context.Connection.RemoteIpAddress is not { } address || !IPAddress.IsLoopback(address) ||
         request.Host.Host != "127.0.0.1") { context.Response.StatusCode = 403; return; }
-    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
+    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' ws://" + request.Host + "; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'";
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["Cache-Control"] = "no-store";
     context.Response.Headers["Referrer-Policy"] = "no-referrer";
@@ -48,6 +49,10 @@ app.Use(async (context, next) =>
     if (request.Path.StartsWithSegments("/api") && request.Path != "/api/session" && request.Path != "/api/health")
     {
         var supplied=request.Headers["X-Studio-Token"].ToString();
+        if (request.Path == "/api/microphone" && context.WebSockets.IsWebSocketRequest &&
+            request.Headers["Origin"].ToString() == "http://" + request.Host &&
+            context.WebSockets.WebSocketRequestedProtocols.Contains(MicrophoneBridge.Protocol))
+            supplied = context.WebSockets.WebSocketRequestedProtocols.FirstOrDefault(value => value.Length == csrf.Length) ?? "";
         if(request.Cookies["studio-session"]!=cookie||supplied.Length!=csrf.Length||!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(supplied),Encoding.UTF8.GetBytes(csrf)))
         {context.Response.StatusCode=403;await context.Response.WriteAsJsonAsync(new { error="Open the installed shortcut or reload the authorized local console." });return;}
     }
@@ -69,6 +74,9 @@ app.Use(async (context, next) =>
     }
 });
 app.UseDefaultFiles(); app.UseStaticFiles();
+app.MapGet("/api/microphone", (HttpContext context, string engine, string station) =>
+    MicrophoneBridge.RunAsync(context, engine, station, app.Lifetime.ApplicationStopping));
+app.MapPost("/api/setup/start-service", async (SetupCoordinator setup, CancellationToken token) => { await setup.StartStoppedServiceAsync(token); return Results.Json(new { accepted=true }); });
 app.MapPost("/api/console/close", (HttpResponse response) => { response.OnCompleted(() => { app.Lifetime.StopApplication(); return Task.CompletedTask; }); return Results.Json(new { accepted=true }); });
 app.MapGet("/api/health", () => Results.Json(new { product="RadioTEDU-OnAirNext", version=access.Version, processId=Environment.ProcessId }));
 app.MapPost("/api/private-cue",async(PrivateCueOpen request,HttpContext context)=>
@@ -159,7 +167,7 @@ app.MapGet("/api/source-check", async (string engine, string station, string id,
 app.MapPost("/api/command", async (ConsoleCommand command, CancellationToken token) =>
 {
     var outputAction = command.Request.ValueKind == JsonValueKind.Object && command.Request.TryGetProperty("Action", out var outputCommand) &&
-        outputCommand.GetString() is "commission-output-profile-clear" or "commission-output-roster";
+        outputCommand.GetString() is "commission-output-profile" or "commission-output-profile-clear" or "commission-output-roster";
     if (command.Request.ValueKind != JsonValueKind.Object || !command.Request.TryGetProperty("Action", out var action) ||
         (!outputAction && !allowedActions.Contains(action.GetString() ?? "")) || !command.Request.TryGetProperty("Id", out var id) ||
         !Guid.TryParse(id.GetString(), out _)) throw new ArgumentException("This station command is not available.");

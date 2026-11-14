@@ -42,7 +42,7 @@ public sealed class UploadInbox
         if(previous is null)
         {
             if(!_library.CanImportFiles(currentRoot))
-                throw new InvalidOperationException("External live folders are read-only. Choose managed storage before uploading files.");
+                throw new InvalidOperationException("This engine cannot upload to the selected folder. Use managed storage in development, or the installed commissioned service for assigned live folders.");
             var reserved=_journal.ActiveLibraryUploads().Sum(receipt=>Files(receipt).Sum(file=>file.Bytes));
             if(new DriveInfo(Path.GetPathRoot(_root)!).AvailableFreeSpace < reserved+files.Sum(file=>file.Bytes)+2L*1024*1024*1024)
                 throw new IOException("The engine upload drive needs at least 2 GiB of space after retained uploads.");

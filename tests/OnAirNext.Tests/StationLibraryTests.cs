@@ -5,6 +5,37 @@ namespace OnAirNext.Tests;
 
 public sealed class StationLibraryTests
 {
+    [Fact]
+    public async Task CommissionedUploadCopiesIntoAssignedFolderWithoutChangingRootOrOverwritingFiles()
+    {
+        var root=Root(); var external=Root(); var inbox=Path.Combine(root,"picked"); Directory.CreateDirectory(inbox);
+        var source=Path.Combine(inbox,"song.wav"); await File.WriteAllTextAsync(source,"fixture");
+        await File.WriteAllTextAsync(Path.Combine(external,"song.wav"),"existing song");
+        await using var journal=new EventJournal(Path.Combine(root,"catalog.db"));
+        await journal.InitializeDesiredStateAsync(Settings);
+        await using var library=new StationLibrary(journal,"unused",Path.Combine(root,"data"),["a"],
+            (_,_)=>Task.FromResult(new AudioMetadata("Artist","Title",1)),allowAssignedFolderUploads:true);
+        await library.InitializeAsync(); await library.SetRootAsync("a",external,"root");
+        var assigned=library.Page("a","",0).Root!; Assert.True(library.CanImportFiles(assigned));
+        await library.ImportAsync("a",[source],"import-one");
+        await WaitAsync(library,()=>library.Page("a","",0).Import?.State=="Completed");
+        Assert.Equal(assigned,library.Page("a","",0).Root); Assert.Equal("existing song",await File.ReadAllTextAsync(Path.Combine(external,"song.wav")));
+        Assert.Single(Directory.GetFiles(external,"song--*.wav"));
+        await library.ImportAsync("a",[source],"import-two");
+        await WaitAsync(library,()=>library.Page("a","",0).Import is {Id:"import-two",State:"Completed"});
+        Assert.Single(Directory.GetFiles(external,"song--*.wav")); Assert.Empty(Directory.GetFiles(external,"*.partial"));
+    }
+
+    [Fact]
+    public async Task DeveloperLibrariesRetainExternalReadOnlyBoundary()
+    {
+        var root=Root(); var external=Root(); await using var journal=new EventJournal(Path.Combine(root,"catalog.db"));
+        await using var library=new StationLibrary(journal,"unused",root,["a"],(_,_)=>Task.FromResult(new AudioMetadata("A","T",1)));
+        Assert.False(library.CanImportFiles(new LibraryRoot("a",external,1)));
+        await using var commissioned=new StationLibrary(journal,"unused",root,["a"],(_,_)=>Task.FromResult(new AudioMetadata("A","T",1)),allowAssignedFolderUploads:true);
+        Assert.False(commissioned.CanImportFiles(new LibraryRoot("unknown",external,1)));
+    }
+
     private static string Root()
     {
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RadioTEDU", "OnAirNext-Dev", "unit-tests", Guid.NewGuid().ToString("N"));

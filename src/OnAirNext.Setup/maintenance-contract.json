@@ -1,5 +1,11 @@
 {
-  "ContractVersion": 1,
+  "ContractVersion": 2,
   "JournalSchemaVersion": 1,
-  "RetainsCurrentDataOnRollback": true
+  "RetainsCurrentDataOnRollback": true,
+  "JournalFeatures": [
+    "held-rotation-v1",
+    "station-queue-v1",
+    "programme-automation-v1",
+    "crossfade-v1"
+  ]
 }

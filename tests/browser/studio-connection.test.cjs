@@ -18,24 +18,24 @@ class Element{
  querySelectorAll(){return[];}
 }
 async function open({engines=['onair-next-dev-service'],preview=false,sessionDenied=false,sessionFailures=0}={}){
- const nodes=new Map(),requests=[],intervals=[];let available=engines,failedStatus=false,now=Date.now();
+ const nodes=new Map(),requests=[],intervals=[];let available=engines,failedStatus=false,microphoneLive=false,now=Date.now(),statusBarrier=null;
  class Clock extends Date{constructor(...args){super(...(args.length?args:[now]));}static now(){return now;}}
  const get=id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id)};
- const document={hidden:false,body:new Element(),getElementById:get,createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),createTextNode:text=>({textContent:text}),querySelectorAll:()=>[],querySelector:()=>new Element(),addEventListener(){}};
+ const document={hidden:false,body:new Element(),getElementById:get,createElement:tag=>new Element(tag),createElementNS:(_,tag)=>new Element(tag),createTextNode:text=>({textContent:text}),querySelectorAll:()=>[],querySelector:()=>new Element(),listeners:{},addEventListener(name,fn){this.listeners[name]=fn}};
  const api=async(url,options={})=>{requests.push({url,method:options.method??'GET'});let value,status=200;
   if(url==='/api/session'){if(sessionFailures>0){sessionFailures--;throw Error('signal timed out')}status=sessionDenied?403:200;value=sessionDenied?{error:'Open the installed shortcut'}:{token:'fixture-token',preview};}
   else if(url==='/api/engines')value={engines:available,preview};
-  else if(url.startsWith('/api/status?')){if(failedStatus){status=503;value={error:'Temporary unavailable'};}else value={stations:[{Id:'9',State:'Running',Enabled:true,RequestedRunning:true,CurrentTitle:'Live fixture song',CurrentArtist:'Fixture artist',Samples:480000,CurrentItemSamples:48000,CurrentDurationSeconds:100,Outputs:[{Id:'fixture-output',State:'SourceConnected'}]}],controller:{mode:'windows-service',capabilities:[]},audit:{PendingEvents:0,RejectedEvents:0}};}
+  else if(url.startsWith('/api/status?')){if(statusBarrier)await statusBarrier;if(failedStatus){status=503;value={error:'Temporary unavailable'};}else value={stations:[{Id:'9',State:'Running',Enabled:true,RequestedRunning:true,CurrentTitle:'Live fixture song',CurrentArtist:'Fixture artist',Samples:480000,CurrentItemSamples:48000,CurrentDurationSeconds:100,Outputs:[{Id:'fixture-output',State:'SourceConnected'}]}],controller:{mode:'windows-service',capabilities:[]},audit:{PendingEvents:0,RejectedEvents:0}};}
   else if(url.startsWith('/api/loudness?'))value={station:'9',meter:null};
   else throw Error('Unexpected request '+url);
   return{ok:status===200,status,json:async()=>value};
  };
  const ui={create:()=>({update(){},show(){}})};
  const context={document,location:{hash:'#access='+'a'.repeat(64),pathname:'/',search:''},history:{replaceState(){}},sessionStorage:storage(),localStorage:storage(),URLSearchParams,AbortSignal,Intl,Date:Clock,console,crypto:require('node:crypto').webcrypto,fetch:api,setInterval:(f,ms)=>{intervals.push({f,ms});return intervals.length},setTimeout,clearTimeout,
-  RadioTeduMeter:require('../../src/OnAirNext.Web/wwwroot/programme-meter.js'),RadioTeduQueue:require('../../src/OnAirNext.Web/wwwroot/queue.js'),RadioTeduCue:ui,RadioTeduProgrammes:ui,RadioTeduBranding:ui,RadioTeduCrossfade:ui};
+  RadioTeduMeter:require('../../src/OnAirNext.Web/wwwroot/programme-meter.js'),RadioTeduQueue:require('../../src/OnAirNext.Web/wwwroot/queue.js'),RadioTeduSetupWizard:ui,RadioTeduMicrophone:{create:()=>({update(){},active:()=>microphoneLive})},RadioTeduCue:ui,RadioTeduProgrammes:ui,RadioTeduBranding:ui,RadioTeduCrossfade:ui};
  vm.runInNewContext(source,context,{filename:'studio.js'});
  const flush=async()=>{for(let i=0;i<5;i++)await new Promise(r=>setImmediate(r));};await flush();
- return{get,requests,flush,setEngines:v=>available=v,setStatusFailure:v=>failedStatus=v,tick:async(n=5)=>{for(let i=0;i<n;i++){now+=1000;for(const timer of intervals.filter(t=>t.ms===1000))timer.f();await flush();}},meterTick:async(n)=>{for(let i=0;i<n;i++){now+=100;for(const timer of intervals.filter(t=>t.ms===100))timer.f();await flush();}}};
+ return{get,requests,flush,pressLibrary:()=>document.listeners.keydown({altKey:true,key:'2',preventDefault(){}}),holdStatus:()=>{let release;statusBarrier=new Promise(resolve=>release=resolve);return()=>{statusBarrier=null;release();}},setHidden:v=>document.hidden=v,setMicrophoneLive:v=>microphoneLive=v,setEngines:v=>available=v,setStatusFailure:v=>failedStatus=v,tick:async(n=5)=>{for(let i=0;i<n;i++){now+=1000;for(const timer of intervals.filter(t=>t.ms===1000))timer.f();await flush();}},meterTick:async(n)=>{for(let i=0;i<n;i++){now+=100;for(const timer of intervals.filter(t=>t.ms===100))timer.f();await flush();}}};
 }
 test('authorized console loads the installed live programme on open using GET requests only',async()=>{
  const page=await open();assert.equal(page.get('station-state').textContent,'Running');assert.equal(page.get('now-title').textContent,'Live fixture song');assert.equal(page.get('now-artist').textContent,'Fixture artist');assert.equal(page.get('footer-status').textContent,'Engine connected');assert.ok(page.requests.some(r=>r.url==='/api/status?engine=onair-next-dev-service'));assert.ok(page.requests.every(r=>r.method==='GET'));
@@ -64,4 +64,14 @@ test('a transient status failure retains a recent sample but does not present st
 test('an open inspector limits meter requests while continuing to update',async()=>{
  const page=await open();page.get('channel-inspector').offsetParent={};await page.meterTick(30);
  const calls=page.requests.filter(r=>r.url.startsWith('/api/loudness?'));assert.equal(calls.length,3);
+});
+
+test('tray capture keeps status fresh while an idle hidden console pauses polling',async()=>{
+ const page=await open();page.setHidden(true);const before=page.requests.length;await page.tick(8);assert.equal(page.requests.length,before);
+ page.setMicrophoneLive(true);await page.tick(8);assert.equal(page.get('station-state').textContent,'Running');assert.ok(page.requests.length>before);
+ page.setStatusFailure(true);await page.tick(8);assert.equal(page.get('station-state').textContent,'Not connected');
+});
+
+test('completing a connection preserves navigation chosen while status was loading',async()=>{
+ const page=await open();const release=page.holdStatus();page.get('engine-select').value='onair-next-dev-service';const connecting=page.get('connect-engine').listeners.click();page.pressLibrary();assert.equal(page.get('breadcrumb').textContent,'Library');release();await connecting;await page.flush();assert.equal(page.get('breadcrumb').textContent,'Library');
 });

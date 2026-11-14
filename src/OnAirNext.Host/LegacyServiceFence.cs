@@ -31,7 +31,8 @@ internal static class LegacyServiceFence
     public static void RequireOutputReleased(OutputSettings output)
     {
         ArgumentNullException.ThrowIfNull(output);
-        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Commissioning requires the installed Windows service.");
+        if (OperatingSystem.IsMacOS()) { RequireOriginMountFree(output); return; }
+        if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Commissioning requires an installed service.");
         if (TryWindowsRelease()) return;
         RequireOriginMountFree(output);
     }

@@ -40,8 +40,19 @@ internal sealed class SetupCoordinator : IAsyncDisposable
             catch(Exception ex) when(ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException){_detail="A saved plan could not be opened. Reopen its original installation package.";}
         }
     }
+    public async Task StartStoppedServiceAsync(CancellationToken token)
+    {
+        if(!OperatingSystem.IsWindows())throw new PlatformNotSupportedException("Use the installed platform service controls.");
+        var service=SetupService.Read()??throw new InvalidOperationException("Install the service first."); SetupService.RequireOwned(service);
+        if(service.State!=1 || service.ProcessId!=0)throw new InvalidOperationException("The service is already running or changing state. No broadcasts were changed.");
+        var executable=Path.Combine(ServiceEndpoint.InstallRoot,"setup","OnAirNext.Setup.exe"); SetupPaths.RequireNoLinks(executable);
+        using var helper=Process.Start(new ProcessStartInfo(executable,"--start-owned-service"){UseShellExecute=true,Verb="runas",WindowStyle=ProcessWindowStyle.Hidden})??throw new IOException("Service start could not open.");
+        await helper.WaitForExitAsync(token);
+        if(helper.ExitCode!=0)throw new InvalidOperationException("Service start was not completed. Refresh installation status before retrying.");
+    }
     public object Status()
     {
+        if(OperatingSystem.IsMacOS())return new {supported=false,platform="macos",packageAvailable=false,busy=false,phase="Installed",detail="The macOS package installs the launchd engine. Saved output changes restart that engine automatically; all channels stay stopped until you start them.",installRoot="/Applications/RadioTEDU OnAir Next.app",dataRoot=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"RadioTEDU","OnAirNext-Dev","mac-service")};
         SetupReceipt? receipt=null;SetupServiceState? service=null;string? systemError=null;
         if(OperatingSystem.IsWindows())
         {
@@ -68,7 +79,7 @@ internal sealed class SetupCoordinator : IAsyncDisposable
         }
         lock(_gate)return new{supported=OperatingSystem.IsWindows(),packageAvailable=File.Exists(_executable)&&File.Exists(Path.Combine(_package,"bundle.json")),busy=!_operation.IsCompleted,phase=_phase,detail=_detail,
             plan=_plan is null?null:new{_plan.Id,_plan.OperatorSid,_plan.RuntimeRoot,_plan.StartService,bytes=_plan.RuntimeFiles.Sum(f=>f.Bytes),bundle=_plan.BundleSha256},receipt,service,systemError,
-            installRoot=ServiceEndpoint.InstallRoot,dataRoot=ServiceEndpoint.DataRoot};
+            bundledRuntime=File.Exists(Path.Combine(_package,"audio-runtime","runtime-manifest.json"))?Path.Combine(_package,"audio-runtime"):null,installRoot=ServiceEndpoint.InstallRoot,dataRoot=ServiceEndpoint.DataRoot};
     }
     public void Prepare(SetupRequest request)
     {

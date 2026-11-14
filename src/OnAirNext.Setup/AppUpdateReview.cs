@@ -44,6 +44,8 @@ internal static class AppUpdatePreparation
         var runtime=await RuntimeSupplementInventory.EffectiveAsync(initial,initialHash,Path.Combine(ServiceEndpoint.DataRoot,RuntimeSupplementInventory.ReceiptName),installed,WindowsInstaller.AssertProtected,token);
         var original=new UpdateImage(await SetupPaths.HashAsync(Path.Combine(installed,"bundle.json"),token),runtime);
         var currentBundle=await UpdateSwap.VerifyImageAsync(installed,original,token);
+        var originalContractFile=currentBundle.Files.SingleOrDefault(f=>f.Path=="setup/maintenance-contract.json")??throw new IOException("The installed image has no recovery compatibility contract.");
+        (await SetupPaths.ReadVerifiedAsync<MaintenanceContract>(SetupPaths.Resolve(installed,originalContractFile.Path),originalContractFile.Sha256,token)).RequireCurrentReader();
         foreach(var file in currentBundle.Files)WindowsInstaller.AssertProtected(SetupPaths.Resolve(installed,file.Path));
         foreach(var file in original.RuntimeFiles)WindowsInstaller.AssertProtected(SetupPaths.Resolve(installed,"tools/"+file.Path));
         WindowsInstaller.AssertProtected(Path.Combine(installed,"bundle.json"));
@@ -51,7 +53,7 @@ internal static class AppUpdatePreparation
         var nextBundle=await SetupPaths.VerifyBundleAsync(package,nextHash,token);
         var contractFile=nextBundle.Files.SingleOrDefault(f=>f.Path=="setup/maintenance-contract.json")??throw new IOException("The new package has no maintenance compatibility contract.");
         var contract=await SetupPaths.ReadVerifiedAsync<MaintenanceContract>(SetupPaths.Resolve(package,contractFile.Path),contractFile.Sha256,token);
-        if(contract.ContractVersion!=1||contract.JournalSchemaVersion!=1||!contract.RetainsCurrentDataOnRollback)throw new InvalidOperationException("This package requires an explicit journal migration outside application-only maintenance.");
+        contract.RequireCurrentReader();
         var replacement=new UpdateImage(nextHash,original.RuntimeFiles.ToArray());
         var files=new UpdateSwapReview(Guid.NewGuid().ToString("N"),original,replacement,DateTimeOffset.UtcNow);
         _=new UpdateSwap(installed,files.Id,original,replacement);
@@ -76,7 +78,7 @@ internal static class AppUpdatePreparation
         using var deadline=CancellationTokenSource.CreateLinkedTokenSource(token);deadline.CancelAfter(TimeSpan.FromSeconds(4));
         await using var pipe=ServicePipeClient.Create(ServiceEndpoint.Pipe);
         await pipe.ConnectAsync(deadline.Token);ServicePipeClient.AuthenticateServer(pipe,ServiceEndpoint.Pipe);
-        var request=JsonSerializer.SerializeToUtf8Bytes(new{Id=Guid.NewGuid().ToString("N"),Action="status"});
+        var request=JsonSerializer.SerializeToUtf8Bytes(new{Id=Guid.NewGuid().ToString("N"),Action="status",JournalFeatures=MaintenanceContract.ReaderFeatures});
         await pipe.WriteAsync(request,deadline.Token);await pipe.WriteAsync("\n"u8.ToArray(),deadline.Token);
         var response=await PipeFrames.ReadAsync(pipe,524288,deadline.Token)??throw new EndOfStreamException("The service closed before acknowledging update review.");
         using var document=JsonDocument.Parse(response);return document.RootElement.Clone();

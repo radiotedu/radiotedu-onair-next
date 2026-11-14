@@ -94,6 +94,14 @@ public sealed class StationCoordinator : IAsyncDisposable
         finally { _commands.Release(); }
     }
 
+    public LiveInput Microphone(string station)
+    {
+        var slot = Get(station);
+        if (!slot.Desired.RequestedRunning || slot.ReleasePending || slot.Session is not StationEngine engine || engine.Snapshot().State != "Running")
+            throw new InvalidOperationException("Start the selected station before opening its microphone.");
+        return engine.Live;
+    }
+
     public ProgrammeLoudnessSnapshot? Loudness(string station)
     {
         var slot = Get(station);
