@@ -439,7 +439,7 @@
       if(data.parent){const up=element('button','','Parent folder');up.type='button';up.addEventListener('click',()=>void browseFolder(data.parent));$('folder-breadcrumb').append(up);}
       if(data.path)$('folder-breadcrumb').append(element('span','quiet',data.path));
       $('folder-list').replaceChildren(...data.folders.map(folder=>{const button=element('button');button.type='button';button.append(icon('folder'),document.createTextNode(folder.name));button.addEventListener('click',()=>void browseFolder(folder.path));return button;}));
-      text('folder-help','External folders are watched read-only in this isolated build.');folderControls();
+      text('folder-help','New stable audio files are detected automatically. Existing files stay unchanged.');folderControls();
     }catch(error){if(generation!==state.folderGeneration)return;state.folder=null;$('folder-list').replaceChildren(element('p','quiet','Folder unavailable. Choose another location.'));text('folder-help',error.message);folderControls();}
   }
   $('choose-folder').addEventListener('click',()=>{state.folderTarget={station:state.station,engine:state.engine};$('folder-dialog').showModal();void browseFolder();});
@@ -707,7 +707,7 @@
     finally{sessionLoading=false;}
   }
   async function initialize(){stationTabs();renderStatus();await connectSession();}
-  let ticks=0;setInterval(()=>{if(document.hidden||state.consoleClosed)return;text('clock',clock.format(new Date()));renderStatus();if(++ticks%2===0){void poll();void pollFolderCheck();}if(ticks%5===0&&!state.session&&!sessionDenied)void connectSession();if(ticks%5===0&&state.autoConnect&&state.session&&!state.engine)void discover();if(ticks%4===0&&state.page==='library')void loadLibrary();if(ticks%4===0&&state.page==='system'){void loadSetup();void loadMigration();void loadAppUpdates();void loadAudioTools();}},1000);text('clock',clock.format(new Date()));document.addEventListener('visibilitychange',()=>{if(!document.hidden){text('clock',clock.format(new Date()));void poll();}});void initialize();
+  let ticks=0;setInterval(()=>{if((document.hidden&&!microphoneUI?.active())||state.consoleClosed)return;text('clock',clock.format(new Date()));renderStatus();if(++ticks%2===0){void poll();void pollFolderCheck();}if(ticks%5===0&&!state.session&&!sessionDenied)void connectSession();if(ticks%5===0&&state.autoConnect&&state.session&&!state.engine)void discover();if(ticks%4===0&&state.page==='library')void loadLibrary();if(ticks%4===0&&state.page==='system'){void loadSetup();void loadMigration();void loadAppUpdates();void loadAudioTools();}},1000);text('clock',clock.format(new Date()));document.addEventListener('visibilitychange',()=>{if(!document.hidden){text('clock',clock.format(new Date()));void poll();}});void initialize();
 
   const reports={items:[],engine:null,loadedAt:0,offset:0,polling:false,busy:false,rows:new Map(),pending:[]};
   try{const saved=JSON.parse(localStorage.getItem('studio-report-requests')??'[]');if(Array.isArray(saved))reports.pending=saved.filter(p=>typeof p.engine==='string'&&/^[0-9a-f]{32}$/.test(p.id??'')&&['day','year'].includes(p.period)&&typeof p.selection==='string').slice(0,16);}catch{}

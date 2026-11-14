@@ -5,7 +5,7 @@
     const say=value=>$('wizard-feedback').textContent=value;
     function stopped(){const c=context();return c.fresh&&c.service&&c.supported&&c.stations.length===8&&c.stations.every(s=>s.State==='Stopped'&&!s.RequestedRunning&&s.Outputs.every(o=>o.State==='Stopped'&&!o.EncoderPid&&!o.QueuedBlocks));}
     function update(){ $('wizard-review').disabled=busy||!stopped();$('wizard-save').disabled=busy||!stopped()||!reviewed;$('wizard-start-service').disabled=busy||context().mode==='macos-service';
-      if(context().mode==='macos-service')$('wizard-start-service').textContent='macOS engine restarts automatically';
+      const mac=context().mode==='macos-service';$('wizard-start-service').textContent=mac?'macOS engine restarts automatically':'Start stopped service';$('wizard-open-installation').disabled=mac;$('wizard-install-guidance').textContent=mac?'The native macOS engine is installed and managed by launchd. It starts independently of the desktop window and restarts automatically after a failure.':'The engine keeps broadcasting when the window closes. The guided installer checks the included audio tools and configures automatic Windows startup and recovery.';
       $('wizard-gate').textContent=stopped()?'Ready to review new stream destinations. No station will start automatically.':'Output configuration requires the installed engine and all channels stopped. Folder and sweeper screens remain available.'; }
     const mounts={'1':'/classic','2':'/lofi','4':'/radio','5':'/cazz','8':'/rock','9':'/energize','10':'/situation','11':'/maincharacter'};
     for(const station of roster){
@@ -31,7 +31,7 @@
     $('wizard-save').addEventListener('click',async()=>{
       if(!reviewed||!stopped()||!$('wizard-confirm').checked){say('Confirm that these destinations are yours and their former source has been disconnected.');return;}
       const selected=reviewed;if(selected.engine!==context().engine){invalidate();say('Engine changed; review again.');return;}busy=true;update();
-      try{const result=await api('/api/command',{method:'POST',body:{engine:selected.engine,request:{Id:crypto.randomUUID(),Action:'commission-output-profile',OutputProfile:selected.profile}}});if(result.accepted!==true)throw Error(result.error??'Output configuration was rejected.');$('wizard-password').value='';reviewed=null;say('Connections saved in protected service storage. Start the stopped service below, reconnect, verify the displayed destinations, then start each selected channel from On Air.');}
+      try{const result=await api('/api/command',{method:'POST',body:{engine:selected.engine,request:{Id:crypto.randomUUID(),Action:'commission-output-profile',OutputProfile:selected.profile}}});if(result.accepted!==true)throw Error(result.error??'Output configuration was rejected.');$('wizard-password').value='';reviewed=null;say(context().mode==='macos-service'?'Connections saved in protected service storage. The engine restarts automatically. Verify the displayed destinations, then start selected channels from On Air.':'Connections saved in protected service storage. Start the stopped service below, reconnect, verify the displayed destinations, then start each selected channel from On Air.');}
       catch(error){reviewed=null;say('Save was not confirmed. Read the engine destinations before retrying. '+error.message);}
       finally{busy=false;update();void refreshSetup();}
     });
