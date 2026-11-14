@@ -11,11 +11,11 @@ try{
  if($LASTEXITCODE -ne 0){throw 'Pinned Electron download failed.'}
  & npm test
  if($LASTEXITCODE -ne 0){throw 'Desktop policy tests failed.'}
- & ./node_modules/electron/dist/electron.exe ./build-icons.cjs
+ & node ./run-fixture.cjs build-icons.cjs
  if($LASTEXITCODE -ne 0){throw 'Application icon render failed.'}
- & ./node_modules/electron/dist/electron.exe ./test/smoke-main.cjs
+ & node ./run-fixture.cjs test/smoke-main.cjs
  if($LASTEXITCODE -ne 0){throw 'Desktop window qualification failed.'}
- & ./node_modules/electron/dist/electron.exe ./test/operator-e2e.cjs
+ & node ./run-fixture.cjs test/operator-e2e.cjs
  if($LASTEXITCODE -ne 0){throw 'Operator UI qualification failed.'}
 }finally{Pop-Location}
 $stage=Join-Path $package 'desktop'
@@ -26,6 +26,13 @@ $appDir=Join-Path $stage 'resources/app'
 $null=New-Item -ItemType Directory -Path $appDir
 foreach($name in @('main.cjs','policy.cjs','shortcut.cjs','package.json','icon.png','icon.ico')){Copy-Item -LiteralPath (Join-Path $desktop $name) -Destination $appDir}
 Copy-Item -LiteralPath (Join-Path $root 'artifacts/windows-codec-runtime') -Destination (Join-Path $package 'audio-runtime') -Recurse
+# The protected installer copies only manifest entries. Include the complete
+# desktop payload before the native setup is wrapped and qualified.
+$manifestPath=Join-Path $package 'bundle.json'
+$bundle=Get-Content -LiteralPath $manifestPath -Raw|ConvertFrom-Json
+$desktopFiles=@(foreach($file in Get-ChildItem -LiteralPath $stage -File -Recurse){@{Path=[IO.Path]::GetRelativePath($package,$file.FullName).Replace('\','/');Bytes=$file.Length;Sha256=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash}})
+$bundle.Files=@($bundle.Files)+$desktopFiles
+$bundle|ConvertTo-Json -Depth 8|Set-Content -LiteralPath $manifestPath -Encoding utf8NoBOM
 $compiler=Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6/ISCC.exe'
 if(-not(Test-Path -LiteralPath $compiler)){throw 'The CI image must provide Inno Setup 6.'}
 & $compiler ('/DPackageRoot='+$package) (Join-Path $root 'packaging/windows/setup.iss')

@@ -75,6 +75,17 @@ async function showWindow(){
  try{return await opening}finally{opening=null}
 }
 async function openBrowser(){try{const d=await ensureConsole();await shell.openExternal(consoleUrl(d))}catch(error){dialog.showErrorBox('RadioTEDU OnAir Next',String(error.message||error))}}
+async function finishSetupDesktop(){
+ const install=path.join(process.env.ProgramFiles||'C:\\Program Files','RadioTEDU-OnAirNext-Development');
+ try{
+  const receipt=JSON.parse(await fs.readFile(path.join(process.env.ProgramData||'C:\\ProgramData','RadioTEDU-OnAirNext-Development','setup-status.json'),'utf8'));
+  const bundle=JSON.parse(await fs.readFile(path.join(setupPackage,'bundle.json'),'utf8'));
+  if(receipt.Phase!=='Installed'||receipt.Source!==bundle.Source)return false;
+  const exe=path.join(install,'desktop','RadioTEDU OnAir Next.exe');await fs.access(exe);
+  await ensureDesktopShortcut(shell,app.getPath('desktop'),exe,path.join(install,'setup','OnAirNext.Setup.exe'),path.join(install,'desktop/resources/app/icon.ico'));
+  app.setLoginItemSettings({openAtLogin:true,path:exe,args:['--background']});return true;
+ }catch{return false}
+}
 function makeTray(){const icon=nativeImage.createFromPath(path.join(__dirname,'icon.png'));tray=new Tray(icon);tray.setToolTip('RadioTEDU OnAir Next');
  tray.setContextMenu(Menu.buildFromTemplate([{label:'Open RadioTEDU OnAir Next',click:()=>void showWindow()},{label:'Open in browser',click:()=>void openBrowser()},{type:'separator'},{label:'Exit window',click:()=>{quitting=true;app.quit()}}]));
  tray.on('double-click',()=>void showWindow());}
@@ -87,8 +98,9 @@ if(!app.requestSingleInstanceLock())app.quit();else{
   session.defaultSession.setPermissionCheckHandler((_wc,permission,origin,details)=>allowedPermission(permission,origin,details));
   session.defaultSession.setPermissionRequestHandler((wc,permission,callback,details)=>callback(allowedPermission(permission,details?.requestingUrl||wc?.getURL()||'',details)));
   makeTray();if(app.isPackaged){
-   app.setLoginItemSettings({openAtLogin:true,path:process.execPath,args:['--background']});
-   try{if(!mac)await ensureDesktopShortcut(shell,app.getPath('desktop'),process.execPath,path.join(process.env.ProgramFiles||'C:\\Program Files','RadioTEDU-OnAirNext-Development','setup','OnAirNext.Setup.exe'),path.join(__dirname,'icon.ico'))}
+   if(!setupPackage)app.setLoginItemSettings({openAtLogin:true,path:process.execPath,args:['--background']});
+   else {const timer=setInterval(()=>{void finishSetupDesktop().then(done=>{if(done)clearInterval(timer)})},3000);timer.unref();}
+   try{if(!mac&&!setupPackage)await ensureDesktopShortcut(shell,app.getPath('desktop'),process.execPath,path.join(process.env.ProgramFiles||'C:\\Program Files','RadioTEDU-OnAirNext-Development','setup','OnAirNext.Setup.exe'),path.join(__dirname,'icon.ico'))}
    catch(error){if(!process.argv.includes('--background'))dialog.showErrorBox('Desktop shortcut',String(error.message||error))}
   }
   if(pendingOpen||!process.argv.includes('--background'))void showWindow();else void ensureConsole().catch(()=>{});
