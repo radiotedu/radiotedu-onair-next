@@ -1,5 +1,7 @@
 'use strict';
 const {app,BrowserWindow,nativeImage}=require('electron');const fs=require('node:fs'),path=require('node:path');
+// CI virtual machines may have no usable GPU; icons use the software renderer.
+app.disableHardwareAcceleration();
 app.whenReady().then(async()=>{try{
  const svg=fs.readFileSync(path.join(__dirname,'../src/OnAirNext.Web/wwwroot/brand/onair-next.svg'),'utf8');
  const window=new BrowserWindow({width:1024,height:1024,show:false,useContentSize:true,webPreferences:{offscreen:true,nodeIntegration:false,contextIsolation:true,sandbox:true}});
