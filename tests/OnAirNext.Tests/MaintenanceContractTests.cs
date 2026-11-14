@@ -10,6 +10,7 @@ public sealed class MaintenanceContractTests
     [Fact]
     public void CurrentReaderDeclarationSurvivesPackageSerialization()
     {
+        Assert.Equal(new[]{OnAirNext.Engine.RecoveryCompatibility.HeldRotationFeature,OnAirNext.Engine.RecoveryCompatibility.StationQueueFeature,OnAirNext.Engine.RecoveryCompatibility.ProgrammeAutomationFeature,OnAirNext.Engine.RecoveryCompatibility.CrossfadeFeature},MaintenanceContract.ReaderFeatures);
         var roundtrip=JsonSerializer.Deserialize<MaintenanceContract>(JsonSerializer.Serialize(Current()))!;
         roundtrip.RequireCurrentReader();
     }

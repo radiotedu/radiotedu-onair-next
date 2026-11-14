@@ -3,12 +3,13 @@ namespace OnAirNext.Installation;
 public sealed record MaintenanceContract(int ContractVersion,int JournalSchemaVersion,bool RetainsCurrentDataOnRollback)
 {
     public string[] JournalFeatures { get; init; } = [];
+    // Protocol values also used by the browser; setup deliberately does not load the audio engine.
     public static IReadOnlyList<string> ReaderFeatures { get; } = Array.AsReadOnly(new[]
     {
-        OnAirNext.Engine.RecoveryCompatibility.HeldRotationFeature,
-        OnAirNext.Engine.RecoveryCompatibility.StationQueueFeature,
-        OnAirNext.Engine.RecoveryCompatibility.ProgrammeAutomationFeature,
-        OnAirNext.Engine.RecoveryCompatibility.CrossfadeFeature
+        "held-rotation-v1",
+        "station-queue-v1",
+        "programme-automation-v1",
+        "crossfade-v1"
     });
     public void RequireCurrentReader()
     {
