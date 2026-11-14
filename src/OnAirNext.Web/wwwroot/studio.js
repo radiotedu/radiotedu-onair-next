@@ -256,7 +256,7 @@
   }
   $('retry-command').addEventListener('click',()=>{const saved=pending();if(saved)void command(saved.request.Action,{},saved);});
   $('refresh-engines').addEventListener('click',()=>void discover());
-  $('connect-engine').addEventListener('click',async()=>{state.autoConnect=false;state.engine=$('engine-select').value;state.sampleAt=0;await poll();if(fresh()){message('Connected to the selected engine.');navigate('air');}});
+  $('connect-engine').addEventListener('click',async()=>{state.autoConnect=false;const selected=$('engine-select').value;state.engine=selected;state.sampleAt=0;await poll();if(fresh()&&state.engine===selected){message('Connected to the selected engine.');if(state.page==='system')navigate('air');}});
   $('disconnect-engine').addEventListener('click',()=>{state.autoConnect=false;state.engine=null;state.stations=[];state.sampleAt=0;state.library=null;stationTabs();resetLibrary();renderStatus();message('Console disconnected. The engine continues independently.');});
   $('start-station').addEventListener('click',()=>void command('start-station'));
   $('stop-station').addEventListener('click',()=>{state.stopTarget={station:state.station,engine:state.engine};text('stop-heading','Stop '+stationName()+'?');text('stop-name',stationName());$('stop-dialog').returnValue='cancel';$('stop-dialog').showModal();});

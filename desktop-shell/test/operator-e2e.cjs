@@ -36,7 +36,7 @@ app.whenReady().then(async()=>{
   window=new BrowserWindow({width:1450,height:1000,show:true,webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,backgroundThrottling:false}});
   window.webContents.on('console-message',(_event,level,message)=>{if(level>=3)failures.push(message);});
   await window.loadURL('http://127.0.0.1:18121/#access='+endpoint.Token);
-  if(!installed){await evaluate(()=>document.querySelector('[data-page=system]').click());await until(()=>js('Array.from(document.getElementById("engine-select").options).some(o=>o.value==='+JSON.stringify(engine)+')'),'fixture discovery');await js('document.getElementById("engine-select").value='+JSON.stringify(engine));await click('connect-engine');}
+  if(!installed){await evaluate(()=>document.querySelector('[data-page=system]').click());await until(()=>js('Array.from(document.getElementById("engine-select").options).some(o=>o.value==='+JSON.stringify(engine)+')'),'fixture discovery');await js('document.getElementById("engine-select").value='+JSON.stringify(engine));await click('connect-engine');await until(async()=>(await text('action-status')).includes('Connected to the selected engine'),'completed engine connection');}
   await until(()=>evaluate(()=>document.querySelector('[aria-label="Pop channel"]')!==null),'channel tabs');
   await evaluate(()=>{document.querySelector('[aria-label="Pop channel"]').click();document.querySelector('[data-page="library"]').click();});
   await until(()=>evaluate(()=>!document.getElementById('add-files').disabled),'file import controls');
